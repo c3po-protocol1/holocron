@@ -1,0 +1,57 @@
+# Holocron Configuration
+# Copy to ~/.holocron/config.yaml
+
+# ─── Sources ────────────────────────────────────────
+sources:
+  # Claude Code — auto-discover sessions from ~/.claude/
+  - type: claude-code
+    discover: auto
+    sessionDir: ~/.claude/projects/    # default
+    watchProcesses: true               # detect running via ps
+    tailActive: true                   # tail JSONL of active sessions
+    pollIntervalMs: 2000               # process check interval
+
+  # OpenClaw — connect to Gateway (Phase 2)
+  # - type: openclaw
+  #   gateway: ws://127.0.0.1:18789
+  #   token: ${OPENCLAW_GATEWAY_TOKEN}
+  #   pollIntervalMs: 5000
+
+  # Codex CLI (Phase 2+)
+  # - type: codex
+  #   discover: auto
+  #   watchProcesses: true
+
+  # Generic file watcher — any tool can write JSONL here
+  # - type: file-watch
+  #   path: /tmp/holocron/*.jsonl
+  #   format: monitor-event
+
+# ─── Storage ────────────────────────────────────────
+store:
+  type: sqlite
+  path: ~/.holocron/holocron.db
+  retentionDays: 30                    # auto-cleanup events older than this
+
+# ─── View ───────────────────────────────────────────
+view:
+  refreshMs: 1000                      # TUI refresh interval
+  showIdle: true                       # show idle sessions
+  groupBy: source                      # source | workspace | label
+
+# ─── Labels (View-Layer Linking) ────────────────────
+labels:
+  rules:
+    # Example: auto-label OpenClaw R2D2 sessions
+    # - match:
+    #     source: openclaw
+    #     sessionKey: "agent:r2d2:*"
+    #   set:
+    #     agent: r2d2
+
+    # Example: label Claude Code sessions by workspace
+    # - match:
+    #     source: claude-code
+    #     workspace: "*/Projects/holocron"
+    #   set:
+    #     project: holocron
