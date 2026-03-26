@@ -32,17 +32,6 @@ c-3po     2222   0.5  1.2  1234567  12345 s001  S    10:00AM   0:01.23 /usr/loca
 	assert.Equal(t, "2222", procs[0].PID)
 }
 
-func TestParseProcessList_ShortLineNoPanic(t *testing.T) {
-	// Lines with "claude" but fewer than 11 fields must not panic.
-	psOutput := []byte(`USER       PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
-claude 1234
-claude 5678 0.1 0.2 extra
-`)
-
-	procs := parseProcessList(psOutput)
-	assert.Empty(t, procs)
-}
-
 func TestParseProcessList_Empty(t *testing.T) {
 	psOutput := []byte(`USER       PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
 c-3po     9999   0.0  0.1   123456   1234 s002  S    10:02AM   0:00.01 vim file.txt

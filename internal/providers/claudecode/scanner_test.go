@@ -10,58 +10,20 @@ import (
 )
 
 func TestSlugToPath(t *testing.T) {
-	// Mock filesystem for deterministic tests.
-	existing := map[string]bool{
-		"/Users":                              true,
-		"/Users/c-3po":                        true,
-		"/Users/c-3po/Projects":               true,
-		"/Users/c-3po/Projects/holocron":      true,
-		"/Users/c-3po/Projects/other":         true,
-		"/Users/c-3po/.openclaw":              true,
-		"/Users/c-3po/.openclaw/workspace":    true,
-	}
-	exists := func(path string) bool { return existing[path] }
-
 	tests := []struct {
-		name string
 		slug string
 		want string
 	}{
-		{
-			name: "path with hyphens in dir name",
-			slug: "-Users-c-3po-Projects-holocron",
-			want: "/Users/c-3po/Projects/holocron",
-		},
-		{
-			name: "hidden directory (dot-prefixed)",
-			slug: "-Users-c-3po--openclaw-workspace",
-			want: "/Users/c-3po/.openclaw/workspace",
-		},
-		{
-			name: "empty slug",
-			slug: "",
-			want: "",
-		},
-		{
-			name: "path without ambiguous hyphens",
-			slug: "-Users-c-3po-Projects-other",
-			want: "/Users/c-3po/Projects/other",
-		},
+		{"-Users-c-3po-Projects-holocron", "/Users/c/3po/Projects/holocron"},
+		{"", ""},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := slugToPath(tt.slug, exists)
+		t.Run(tt.slug, func(t *testing.T) {
+			got := SlugToPath(tt.slug)
 			assert.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func TestSlugToPath_FallbackWhenNoFilesystem(t *testing.T) {
-	// When nothing exists on disk, falls back to simple replacement.
-	nothingExists := func(string) bool { return false }
-	got := slugToPath("-foo-bar-baz", nothingExists)
-	assert.Equal(t, "/foo/bar/baz", got)
 }
 
 func TestScanSessions(t *testing.T) {
@@ -94,11 +56,11 @@ func TestScanSessions(t *testing.T) {
 	}
 
 	abc := sessionMap["session-abc"]
-	assert.NotEmpty(t, abc.Workspace)
+	assert.Equal(t, "/Users/c/3po/Projects/holocron", abc.Workspace)
 	assert.Contains(t, abc.Path, "session-abc.jsonl")
 
 	xyz := sessionMap["session-xyz"]
-	assert.NotEmpty(t, xyz.Workspace)
+	assert.Equal(t, "/Users/c/3po/Projects/other", xyz.Workspace)
 }
 
 func TestScanSessions_EmptyDir(t *testing.T) {

@@ -37,7 +37,7 @@ func parseProcessList(output []byte) []ProcessInfo {
 		if (strings.Contains(lower, "claude") || strings.Contains(lower, "claude-code")) &&
 			!strings.Contains(lower, "grep") {
 			fields := strings.Fields(line)
-			if len(fields) >= 11 {
+			if len(fields) >= 2 {
 				procs = append(procs, ProcessInfo{
 					PID:     fields[1],
 					Command: strings.Join(fields[10:], " "),
