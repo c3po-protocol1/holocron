@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -59,7 +60,7 @@ func (s *SQLiteStore) Save(event collector.MonitorEvent) error {
 
 	// Insert event
 	_, err = tx.Exec(`
-		INSERT INTO events (id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json)
+		INSERT OR IGNORE INTO events (id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID, event.Source, event.SessionID, event.Workspace,
 		event.Timestamp, string(event.Event), string(event.Status),
@@ -216,11 +217,15 @@ func scanSession(s scanner) (collector.SessionState, error) {
 		ss.ElapsedMs = lastEventAt.Int64 - startedAt.Int64
 	}
 	if labelsJSON.Valid {
-		json.Unmarshal([]byte(labelsJSON.String), &ss.Labels)
+		if err := json.Unmarshal([]byte(labelsJSON.String), &ss.Labels); err != nil {
+			slog.Warn("corrupt session labels JSON", "session_id", ss.SessionID, "field", "labels_json", "err", err)
+		}
 	}
 	if tokenJSON.Valid {
 		var tu collector.TokenUsage
-		if err := json.Unmarshal([]byte(tokenJSON.String), &tu); err == nil {
+		if err := json.Unmarshal([]byte(tokenJSON.String), &tu); err != nil {
+			slog.Warn("corrupt session token JSON", "session_id", ss.SessionID, "field", "token_json", "err", err)
+		} else {
 			ss.TokenUsage = &tu
 		}
 	}
@@ -249,12 +254,16 @@ func scanEvent(s scanner) (collector.MonitorEvent, error) {
 	ev.Workspace = workspace.String
 	if detailJSON.Valid {
 		var d collector.EventDetail
-		if err := json.Unmarshal([]byte(detailJSON.String), &d); err == nil {
+		if err := json.Unmarshal([]byte(detailJSON.String), &d); err != nil {
+			slog.Warn("corrupt event detail JSON", "event_id", ev.ID, "field", "detail_json", "err", err)
+		} else {
 			ev.Detail = &d
 		}
 	}
 	if labelsJSON.Valid {
-		json.Unmarshal([]byte(labelsJSON.String), &ev.Labels)
+		if err := json.Unmarshal([]byte(labelsJSON.String), &ev.Labels); err != nil {
+			slog.Warn("corrupt event labels JSON", "event_id", ev.ID, "field", "labels_json", "err", err)
+		}
 	}
 
 	return ev, nil
