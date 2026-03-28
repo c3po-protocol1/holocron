@@ -22,10 +22,7 @@ Holocron monitors AI coding tools (Claude Code, Codex, Gemini, etc.) and orchest
 
 ```bash
 # Install
-go install github.com/c3po-protocol1/holocron/cmd/holocron@latest
-
-# Alias (optional)
-alias holo="holocron"
+go install github.com/c3po-protocol1/holocron/cmd/holo@latest
 
 # Run
 holo          # Launch TUI
@@ -35,22 +32,22 @@ holo          # Launch TUI
 
 ```bash
 # Launch the interactive TUI
-holocron
+holo
 
 # One-shot session summary
-holocron status
+holo status
 
 # JSON output (for scripting)
-holocron status --json
+holo status --json
 
 # Filter by source
-holocron status --source claude-code
+holo status --source claude-code
 
 # Show only active sessions
-holocron status --active
+holo status --active
 
 # Print version
-holocron version
+holo version
 ```
 
 ## Architecture

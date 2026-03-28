@@ -110,7 +110,7 @@ holocron/
 ### Dependency Rules
 
 ```
-cmd/holocron
+cmd/holo
   └── imports: collector, config, store/sqlite, providers/*, tui
 
 tui
@@ -173,7 +173,7 @@ WebSocket Client → <-chan MonitorEvent → TUI
 ```
 
 Code changes needed:
-- New `cmd/holocron-daemon/main.go` (wiring only)
+- New `cmd/holo-daemon/main.go` (wiring only)
 - New `internal/api/server.go` (WebSocket event server)
 - New `internal/api/client.go` (WebSocket event client that returns `<-chan MonitorEvent`)
 - TUI code: **zero changes**

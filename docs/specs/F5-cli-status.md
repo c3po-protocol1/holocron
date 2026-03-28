@@ -8,7 +8,7 @@
 
 ## Package
 
-- `cmd/holocron/main.go` — Cobra root + subcommands
+- `cmd/holo/main.go` — Cobra root + subcommands
 - (reuses `internal/collector`, `internal/store`, `internal/config`)
 
 ## CLI Structure (Cobra)

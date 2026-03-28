@@ -10,7 +10,7 @@
 
 ## Overview
 
-Create the Cobra CLI entry point (`cmd/holocron/main.go`) with two modes:
+Create the Cobra CLI entry point (`cmd/holo/main.go`) with two modes:
 - `holo` (default) → launch TUI (F4)
 - `holo status` → one-shot session summary and exit
 - `holo version` → print version
@@ -19,7 +19,7 @@ This is the first feature that creates `cmd/` and wires everything together.
 
 ## Tasks (TDD where applicable)
 
-### Task 1: CLI Entry Point (`cmd/holocron/main.go`)
+### Task 1: CLI Entry Point (`cmd/holo/main.go`)
 - Create Cobra root command (`holo`)
 - Default action: load config → open store → load sessions → launch TUI (F4)
 - Add `version` subcommand (hardcoded version string for now)
@@ -37,7 +37,7 @@ This is the first feature that creates `cmd/` and wires everything together.
 - Output: JSON array of session objects
 - Fields: source, sessionId, status, workspace, elapsedMs, currentTool, currentTarget
 
-### Task 4: Status Command (`cmd/holocron/status.go` or in main.go)
+### Task 4: Status Command (`cmd/holo/status.go` or in main.go)
 - Cobra subcommand `status`
 - Flags: `--json`, `--source <type>`, `--active`
 - Behavior: load config → open store (read-only) → load sessions → filter → format → print → exit 0
@@ -52,7 +52,7 @@ This is the first feature that creates `cmd/` and wires everything together.
 - Test elapsed formatting in status output
 
 ### Task 6: Build & Integration
-- `go build ./cmd/holocron` compiles successfully
+- `go build ./cmd/holo` compiles successfully
 - All tests pass: `go test ./... -v`
 - All prior tests still pass (F1–F4)
 
