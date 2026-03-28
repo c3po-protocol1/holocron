@@ -108,6 +108,7 @@ func Load(userDir, localDir string) (Config, error) {
 	}
 
 	expandEnvVars(&cfg)
+	expandTildePaths(&cfg)
 
 	if err := validate(cfg); err != nil {
 		return Config{}, err
@@ -127,6 +128,7 @@ func LoadFile(path string) (Config, error) {
 
 	cfg = merge(cfg, parsed)
 	expandEnvVars(&cfg)
+	expandTildePaths(&cfg)
 
 	if err := validate(cfg); err != nil {
 		return Config{}, err
@@ -199,6 +201,29 @@ func merge(base Config, overlay parsedConfig) Config {
 	}
 
 	return base
+}
+
+// ExpandTilde replaces a leading ~/ with the user's home directory.
+func ExpandTilde(path string) string {
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		if path == "~" {
+			return home
+		}
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
+func expandTildePaths(cfg *Config) {
+	cfg.Store.Path = ExpandTilde(cfg.Store.Path)
+	for i := range cfg.Sources {
+		cfg.Sources[i].SessionDir = ExpandTilde(cfg.Sources[i].SessionDir)
+		cfg.Sources[i].Path = ExpandTilde(cfg.Sources[i].Path)
+	}
 }
 
 func expandEnvVars(cfg *Config) {
