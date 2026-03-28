@@ -18,7 +18,7 @@ import (
 	"github.com/c3po-protocol1/holocron/internal/tui"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
