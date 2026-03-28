@@ -403,6 +403,155 @@ func TestStatusDotConstants(t *testing.T) {
 	assert.Equal(t, "✓", StatusDotDone)
 }
 
+// --- filterActive tests ---
+
+func TestFilterActive_MixedStatuses(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Status: collector.StatusThinking},
+		{SessionID: "s2", Status: collector.StatusIdle},
+		{SessionID: "s3", Status: collector.StatusToolRunning},
+		{SessionID: "s4", Status: collector.StatusDone},
+		{SessionID: "s5", Status: collector.StatusWaiting},
+		{SessionID: "s6", Status: collector.StatusError},
+	}
+
+	result := filterActive(sessions)
+	assert.Len(t, result, 4)
+	assert.Equal(t, "s1", result[0].SessionID)
+	assert.Equal(t, "s3", result[1].SessionID)
+	assert.Equal(t, "s5", result[2].SessionID)
+	assert.Equal(t, "s6", result[3].SessionID)
+}
+
+func TestFilterActive_AllIdle(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Status: collector.StatusIdle},
+		{SessionID: "s2", Status: collector.StatusDone},
+	}
+
+	result := filterActive(sessions)
+	assert.Empty(t, result)
+}
+
+func TestFilterActive_AllActive(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Status: collector.StatusThinking},
+		{SessionID: "s2", Status: collector.StatusToolRunning},
+	}
+
+	result := filterActive(sessions)
+	assert.Len(t, result, 2)
+}
+
+func TestFilterActive_Empty(t *testing.T) {
+	result := filterActive(nil)
+	assert.Empty(t, result)
+}
+
+// --- Active toggle tests ---
+
+func TestModel_ToggleActiveOnly(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusThinking},
+		{SessionID: "s2", Source: "test", Status: collector.StatusIdle},
+	}
+	m := New(nil, sessions)
+	assert.False(t, m.activeOnly)
+
+	// Press 'a' to enable
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	assert.True(t, model.(Model).activeOnly)
+
+	// Press 'a' again to disable
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	assert.False(t, model.(Model).activeOnly)
+}
+
+func TestModel_ActiveFilter_CursorReset(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusIdle},
+		{SessionID: "s2", Source: "test", Status: collector.StatusIdle},
+		{SessionID: "s3", Source: "test", Status: collector.StatusThinking},
+	}
+	m := New(nil, sessions)
+
+	// Move cursor to s3 (index 2)
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	assert.Equal(t, 2, model.(Model).cursor)
+
+	// Enable active filter — only s3 visible, cursor should reset to 0
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	assert.Equal(t, 0, model.(Model).cursor)
+}
+
+func TestModel_ActiveFilter_EmptyStateMessage(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusIdle},
+		{SessionID: "s2", Source: "test", Status: collector.StatusDone},
+	}
+	m := New(nil, sessions)
+	m.activeOnly = true
+
+	view := m.View()
+	assert.Contains(t, view, "No active sessions")
+	assert.Contains(t, view, "'a'")
+}
+
+func TestModel_ActiveFilter_FooterShowsHiddenCount(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusThinking},
+		{SessionID: "s2", Source: "test", Status: collector.StatusIdle},
+		{SessionID: "s3", Source: "test", Status: collector.StatusDone},
+	}
+	m := New(nil, sessions)
+	m.activeOnly = true
+
+	view := m.View()
+	assert.Contains(t, view, "[a]ctive: on")
+	assert.Contains(t, view, "2 hidden")
+}
+
+func TestModel_ActiveFilter_FooterShowsOff(t *testing.T) {
+	m := New(nil, nil)
+	m.activeOnly = false
+
+	view := m.View()
+	assert.Contains(t, view, "[a]ctive: off")
+}
+
+func TestModel_ActiveFilter_CursorBoundsWithFilter(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusThinking},
+	}
+	m := New(nil, sessions)
+	m.activeOnly = true
+
+	// Try to move cursor down past the single visible session
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	assert.Equal(t, 0, model.(Model).cursor)
+}
+
+// --- Help shows active binding ---
+
+func TestRenderHelp_ShowsActiveBinding(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderHelp(keys, 80)
+	assert.Contains(t, result, "toggle active-only filter")
+}
+
+// --- KeyMap includes Active ---
+
+func TestDefaultKeyMap_IncludesActive(t *testing.T) {
+	km := DefaultKeyMap()
+	h := km.Active.Help()
+	assert.NotEmpty(t, h.Key)
+	assert.NotEmpty(t, h.Desc)
+}
+
 // --- Integration-like tests ---
 
 func TestModel_FullEventFlow(t *testing.T) {
