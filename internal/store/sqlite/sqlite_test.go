@@ -145,13 +145,13 @@ func TestGetEventsWithLimit(t *testing.T) {
 		require.NoError(t, s.Save(ev))
 	}
 
+	// Limit returns the newest N events (ordered ascending)
 	events, err := s.GetEvents("claude-code", "s1", 0, 3)
 	require.NoError(t, err)
 	require.Len(t, events, 3)
-	// Should be ordered by timestamp ascending
-	assert.Equal(t, "e0", events[0].ID)
-	assert.Equal(t, "e1", events[1].ID)
-	assert.Equal(t, "e2", events[2].ID)
+	assert.Equal(t, "e7", events[0].ID)
+	assert.Equal(t, "e8", events[1].ID)
+	assert.Equal(t, "e9", events[2].ID)
 }
 
 func TestGetEventsOrderedByTimestamp(t *testing.T) {
