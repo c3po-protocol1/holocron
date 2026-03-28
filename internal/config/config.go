@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,9 +93,16 @@ func Load(userDir, localDir string) (Config, error) {
 
 	localPath := filepath.Join(localDir, "holocron.yaml")
 	if _, err := os.Stat(localPath); err == nil {
+		slog.Warn("Loading local config override", "path", localPath)
 		localCfg, err := parseFile(localPath)
 		if err != nil {
 			return Config{}, fmt.Errorf("local config: %w", err)
+		}
+		// Restrict sensitive fields from local config override (security hardening)
+		localCfg.Store.Path = nil
+		for i := range localCfg.Sources {
+			localCfg.Sources[i].Token = ""
+			localCfg.Sources[i].SessionDir = ""
 		}
 		cfg = merge(cfg, localCfg)
 	}

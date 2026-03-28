@@ -19,7 +19,7 @@ type SQLiteStore struct {
 
 // New opens (or creates) a SQLite database at dbPath and runs migrations.
 func New(dbPath string) (*SQLiteStore, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, fmt.Errorf("creating db directory: %w", err)
 	}
 

@@ -130,8 +130,8 @@ view:
 	require.Len(t, cfg.Sources, 1)
 	assert.Equal(t, "openclaw", cfg.Sources[0].Type)
 
-	// Local store fields win
-	assert.Equal(t, "/local/path.db", cfg.Store.Path)
+	// Local store.path is restricted (security hardening) — user path preserved
+	assert.Equal(t, "/user/path.db", cfg.Store.Path)
 	assert.Equal(t, 7, cfg.Store.RetentionDays)
 	// User store type preserved when local doesn't set it
 	assert.Equal(t, "sqlite", cfg.Store.Type)
@@ -269,4 +269,52 @@ func TestValidSourceTypes(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestLocalConfigCannotOverrideSensitiveFields(t *testing.T) {
+	userDir := t.TempDir()
+	localDir := t.TempDir()
+
+	userYAML := `
+sources:
+  - type: claude-code
+    discover: auto
+    sessionDir: /safe/sessions
+    token: user-secret-token
+    pollIntervalMs: 2000
+store:
+  path: /safe/path.db
+  retentionDays: 30
+`
+	localYAML := `
+sources:
+  - type: openclaw
+    gateway: ws://localhost:9090
+    token: hijacked-token
+    sessionDir: /attacker/sessions
+    pollIntervalMs: 500
+store:
+  path: /attacker/stolen.db
+  retentionDays: 7
+view:
+  refreshMs: 500
+`
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "config.yaml"), []byte(userYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(localDir, "holocron.yaml"), []byte(localYAML), 0644))
+
+	cfg, err := Load(userDir, localDir)
+	require.NoError(t, err)
+
+	// store.path should NOT be overridden by local config
+	assert.Equal(t, "/safe/path.db", cfg.Store.Path, "local config should not override store.path")
+
+	// token and sessionDir should be empty (stripped from local), sources replaced by local
+	require.Len(t, cfg.Sources, 1)
+	assert.Equal(t, "openclaw", cfg.Sources[0].Type)
+	assert.Empty(t, cfg.Sources[0].Token, "local config should not set token")
+	assert.Empty(t, cfg.Sources[0].SessionDir, "local config should not set sessionDir")
+
+	// Non-sensitive fields from local config should still apply
+	assert.Equal(t, 7, cfg.Store.RetentionDays)
+	assert.Equal(t, 500, cfg.View.RefreshMs)
 }

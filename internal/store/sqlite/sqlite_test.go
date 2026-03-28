@@ -214,3 +214,19 @@ func TestNewCreatesParentDirectories(t *testing.T) {
 	_, err = os.Stat(dbPath)
 	assert.NoError(t, err, "database file should exist")
 }
+
+func TestNewCreatesDirectoryWith0700Permissions(t *testing.T) {
+	dir := t.TempDir()
+	subDir := filepath.Join(dir, "secure-dir")
+	dbPath := filepath.Join(subDir, "test.db")
+
+	// Set a permissive umask to verify the code enforces 0700
+	s, err := New(dbPath)
+	require.NoError(t, err)
+	defer s.Close()
+
+	info, err := os.Stat(subDir)
+	require.NoError(t, err)
+	perm := info.Mode().Perm()
+	assert.Equal(t, os.FileMode(0o700), perm, "directory should have 0700 permissions, got %o", perm)
+}
