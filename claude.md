@@ -15,3 +15,5 @@
 - [F3 Dev Plan](docs/plans/F3-plan.md)
 - [F4 Dev Plan](docs/plans/F4-plan.md)
 - [F5 Dev Plan](docs/plans/F5-plan.md)
+- [F7 Spec](docs/specs/F7-active-toggle.md)
+- [F7 Dev Plan](docs/plans/F7-plan.md)
