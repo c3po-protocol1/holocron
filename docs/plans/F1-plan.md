@@ -17,7 +17,7 @@ No UI, no providers — just the foundation.
 ### Task 1: Initialize Go Module & Folder Structure
 - `go mod init github.com/c3po-protocol1/holocron`
 - Create directory skeleton per ARCHITECTURE.md:
-  - `cmd/holocron/`
+  - `cmd/holo/`
   - `internal/collector/`
   - `internal/store/`
   - `internal/store/sqlite/`

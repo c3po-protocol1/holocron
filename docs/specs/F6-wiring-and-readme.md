@@ -83,7 +83,7 @@ Apply after loading to: `store.path`, `sources[].sessionDir`, `sources[].path`.
 
 ### 5. Update README.md
 
-- **Install path:** `go install github.com/c3po-protocol1/holocron/cmd/holocron@latest`
+- **Install path:** `go install github.com/c3po-protocol1/holocron/cmd/holo@latest`
 - **Alias:** `alias holo="holocron"`
 - **Roadmap:** Mark Phase 1 as complete
 - **Features:** Change "Planned" to actual working features
@@ -94,7 +94,7 @@ Apply after loading to: `store.path`, `sources[].sessionDir`, `sources[].path`.
 | File | Action |
 |------|--------|
 | `internal/collector/collector.go` | **NEW** |
-| `cmd/holocron/main.go` | **MODIFY** — wire collector + providers |
+| `cmd/holo/main.go` | **MODIFY** — wire collector + providers |
 | `internal/config/config.go` | **MODIFY** — tilde expansion |
 | `README.md` | **MODIFY** — fix paths, update status |
 
@@ -102,21 +102,21 @@ Apply after loading to: `store.path`, `sources[].sessionDir`, `sources[].path`.
 
 ```bash
 # 1. Build and run TUI — shows Claude Code sessions if any exist
-go build -o holocron ./cmd/holocron/ && ./holocron
+go build -o holocron ./cmd/holo/ && ./holo
 
 # 2. Open Claude Code elsewhere → session appears in Holocron live
 
 # 3. Quick status shows discovered sessions
-./holocron status
+./holo status
 
 # 4. JSON output is valid
-./holocron status --json | jq .
+./holo status --json | jq .
 
 # 5. No config → helpful message, no crash
-mv ~/.holocron/config.yaml /tmp/ && ./holocron; mv /tmp/config.yaml ~/.holocron/
+mv ~/.holocron/config.yaml /tmp/ && ./holo; mv /tmp/config.yaml ~/.holocron/
 
 # 6. Version
-./holocron version
+./holo version
 ```
 
 ## Out of Scope
