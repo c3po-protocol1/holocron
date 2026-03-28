@@ -1,0 +1,455 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/c3po-protocol1/holocron/internal/collector"
+)
+
+// --- FormatElapsed tests ---
+
+func TestFormatElapsed_Seconds(t *testing.T) {
+	assert.Equal(t, "0s", FormatElapsed(0))
+	assert.Equal(t, "5s", FormatElapsed(5*time.Second))
+	assert.Equal(t, "59s", FormatElapsed(59*time.Second))
+}
+
+func TestFormatElapsed_Minutes(t *testing.T) {
+	assert.Equal(t, "1m 00s", FormatElapsed(60*time.Second))
+	assert.Equal(t, "2m 13s", FormatElapsed(2*time.Minute+13*time.Second))
+	assert.Equal(t, "59m 59s", FormatElapsed(59*time.Minute+59*time.Second))
+}
+
+func TestFormatElapsed_Hours(t *testing.T) {
+	assert.Equal(t, "1h 00m", FormatElapsed(time.Hour))
+	assert.Equal(t, "2h 15m", FormatElapsed(2*time.Hour+15*time.Minute))
+	assert.Equal(t, "10h 05m", FormatElapsed(10*time.Hour+5*time.Minute))
+}
+
+func TestFormatElapsed_Negative(t *testing.T) {
+	assert.Equal(t, "0s", FormatElapsed(-5*time.Second))
+}
+
+// --- StatusIndicator tests ---
+
+func TestStatusIndicator_Active(t *testing.T) {
+	for _, status := range []collector.SessionStatus{collector.StatusThinking, collector.StatusToolRunning} {
+		result := StatusIndicator(status)
+		assert.Contains(t, result, StatusDotActive, "status %s should show active dot", status)
+	}
+}
+
+func TestStatusIndicator_Idle(t *testing.T) {
+	for _, status := range []collector.SessionStatus{collector.StatusIdle, collector.StatusWaiting} {
+		result := StatusIndicator(status)
+		assert.Contains(t, result, StatusDotIdle, "status %s should show idle dot", status)
+	}
+}
+
+func TestStatusIndicator_Error(t *testing.T) {
+	result := StatusIndicator(collector.StatusError)
+	assert.Contains(t, result, StatusDotError)
+}
+
+func TestStatusIndicator_Done(t *testing.T) {
+	result := StatusIndicator(collector.StatusDone)
+	assert.Contains(t, result, StatusDotDone)
+}
+
+// --- TruncateID tests ---
+
+func TestTruncateID_Short(t *testing.T) {
+	assert.Equal(t, "abc", TruncateID("abc"))
+	assert.Equal(t, "1234567890", TruncateID("1234567890"))
+}
+
+func TestTruncateID_Long(t *testing.T) {
+	assert.Equal(t, "a8837a23cd..", TruncateID("a8837a23cdef1234"))
+}
+
+// --- RenderEmptyState tests ---
+
+func TestRenderEmptyState(t *testing.T) {
+	result := RenderEmptyState()
+	assert.Contains(t, result, "No sessions detected")
+	assert.Contains(t, result, "config")
+}
+
+// --- RenderSessionList tests ---
+
+func TestRenderSessionList_Empty(t *testing.T) {
+	result := RenderSessionList(nil, 0, time.Now())
+	assert.Contains(t, result, "No sessions detected")
+}
+
+func TestRenderSessionList_WithSessions(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{
+			Source:    "claude-code",
+			SessionID: "a8837a23cdef1234",
+			Workspace: "~/Projects/my-app",
+			Status:    collector.StatusToolRunning,
+			StartedAt: now.Add(-2*time.Minute - 13*time.Second).UnixMilli(),
+			CurrentTool:   "Edit",
+			CurrentTarget: "src/index.ts",
+		},
+		{
+			Source:    "claude-code",
+			SessionID: "323ac29b5678",
+			Workspace: "~/Projects/agent-monitor",
+			Status:    collector.StatusIdle,
+			StartedAt: now.Add(-15*time.Minute - 2*time.Second).UnixMilli(),
+		},
+	}
+
+	result := RenderSessionList(sessions, 0, now)
+	assert.Contains(t, result, "claude-code")
+	assert.Contains(t, result, "a8837a23cd..")
+	assert.Contains(t, result, "~/Projects/my-app")
+	assert.Contains(t, result, "Edit → src/index.ts")
+	assert.Contains(t, result, "▶") // cursor on first row
+}
+
+// --- RenderSessionRow tests ---
+
+func TestRenderSessionRow_Selected(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "claude-code",
+		SessionID: "abc123",
+		Status:    collector.StatusThinking,
+		StartedAt: now.Add(-30 * time.Second).UnixMilli(),
+	}
+
+	result := RenderSessionRow(s, true, now)
+	assert.Contains(t, result, "▶")
+}
+
+func TestRenderSessionRow_NotSelected(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "claude-code",
+		SessionID: "abc123",
+		Status:    collector.StatusIdle,
+		StartedAt: now.Add(-30 * time.Second).UnixMilli(),
+	}
+
+	result := RenderSessionRow(s, false, now)
+	assert.NotContains(t, result, "▶")
+}
+
+// --- Model tests ---
+
+func TestNew(t *testing.T) {
+	ch := make(chan collector.MonitorEvent)
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "claude-code", Status: collector.StatusIdle},
+	}
+
+	m := New(ch, sessions)
+	assert.Len(t, m.sessions, 1)
+	assert.Equal(t, 0, m.cursor)
+	assert.False(t, m.showHelp)
+}
+
+func TestNew_NilSessions(t *testing.T) {
+	m := New(nil, nil)
+	assert.Empty(t, m.sessions)
+}
+
+func TestModel_CursorBounds(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test"},
+		{SessionID: "s2", Source: "test"},
+		{SessionID: "s3", Source: "test"},
+	}
+	m := New(nil, sessions)
+
+	// Move down through all sessions
+	var model tea.Model = m
+	for i := 0; i < 5; i++ {
+		model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	assert.Equal(t, 2, model.(Model).cursor, "cursor should not exceed last index")
+
+	// Move up past the beginning
+	for i := 0; i < 5; i++ {
+		model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	}
+	assert.Equal(t, 0, model.(Model).cursor, "cursor should not go below 0")
+}
+
+func TestModel_ToggleHelp(t *testing.T) {
+	m := New(nil, nil)
+	assert.False(t, m.showHelp)
+
+	// Press ?
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	assert.True(t, model.(Model).showHelp)
+
+	// Press any key to close help (not quit)
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	assert.False(t, model.(Model).showHelp)
+}
+
+func TestModel_Quit(t *testing.T) {
+	m := New(nil, nil)
+
+	var model tea.Model = m
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	require.NotNil(t, cmd)
+	// tea.Quit returns a special command
+	msg := cmd()
+	assert.IsType(t, tea.QuitMsg{}, msg)
+}
+
+func TestModel_WindowResize(t *testing.T) {
+	m := New(nil, nil)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	assert.Equal(t, 120, model.(Model).width)
+	assert.Equal(t, 40, model.(Model).height)
+}
+
+func TestModel_ApplyEvent_NewSession(t *testing.T) {
+	m := New(nil, nil)
+
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "new-session",
+		Workspace: "~/Projects/test",
+		Status:    collector.StatusThinking,
+		Timestamp: time.Now().UnixMilli(),
+		Event:     collector.EventSessionStart,
+	}
+
+	m.applyEvent(ev)
+
+	assert.Len(t, m.sessions, 1)
+	assert.Equal(t, "new-session", m.sessions[0].SessionID)
+	assert.Equal(t, collector.StatusThinking, m.sessions[0].Status)
+	assert.Equal(t, "~/Projects/test", m.sessions[0].Workspace)
+	assert.Equal(t, 1, m.eventCount)
+}
+
+func TestModel_ApplyEvent_UpdateExisting(t *testing.T) {
+	sessions := []collector.SessionState{
+		{
+			Source:    "claude-code",
+			SessionID: "existing",
+			Status:    collector.StatusIdle,
+		},
+	}
+	m := New(nil, sessions)
+
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "existing",
+		Status:    collector.StatusToolRunning,
+		Timestamp: time.Now().UnixMilli(),
+		Detail: &collector.EventDetail{
+			Tool:   "Edit",
+			Target: "main.go",
+		},
+	}
+
+	m.applyEvent(ev)
+
+	assert.Len(t, m.sessions, 1)
+	assert.Equal(t, collector.StatusToolRunning, m.sessions[0].Status)
+	assert.Equal(t, "Edit", m.sessions[0].CurrentTool)
+	assert.Equal(t, "main.go", m.sessions[0].CurrentTarget)
+}
+
+func TestModel_ApplyEvent_ClearsToolOnIdle(t *testing.T) {
+	sessions := []collector.SessionState{
+		{
+			Source:      "claude-code",
+			SessionID:   "s1",
+			Status:      collector.StatusToolRunning,
+			CurrentTool: "Edit",
+			CurrentTarget: "file.go",
+		},
+	}
+	m := New(nil, sessions)
+
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "s1",
+		Status:    collector.StatusIdle,
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	m.applyEvent(ev)
+
+	assert.Equal(t, "", m.sessions[0].CurrentTool)
+	assert.Equal(t, "", m.sessions[0].CurrentTarget)
+}
+
+func TestModel_ApplyEvent_FromChannel(t *testing.T) {
+	ch := make(chan collector.MonitorEvent, 1)
+	m := New(ch, nil)
+
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "ch-session",
+		Status:    collector.StatusThinking,
+		Timestamp: time.Now().UnixMilli(),
+	}
+	ch <- ev
+
+	// The waitForEvent cmd should read from the channel
+	cmd := m.waitForEvent()
+	require.NotNil(t, cmd)
+	msg := cmd()
+	require.NotNil(t, msg)
+
+	evMsg, ok := msg.(eventMsg)
+	require.True(t, ok)
+	assert.Equal(t, "ch-session", collector.MonitorEvent(evMsg).SessionID)
+}
+
+func TestModel_View_EmptyState(t *testing.T) {
+	m := New(nil, nil)
+	view := m.View()
+
+	assert.Contains(t, view, "Holocron")
+	assert.Contains(t, view, "No sessions detected")
+	assert.Contains(t, view, "0 sessions")
+}
+
+func TestModel_View_WithSessions(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{
+			Source:    "claude-code",
+			SessionID: "abc123",
+			Status:    collector.StatusThinking,
+			StartedAt: now.Add(-5 * time.Minute).UnixMilli(),
+		},
+	}
+	m := New(nil, sessions)
+	view := m.View()
+
+	assert.Contains(t, view, "Holocron")
+	assert.Contains(t, view, "claude-code")
+	assert.Contains(t, view, "1 sessions")
+	assert.Contains(t, view, "1 active")
+}
+
+func TestModel_View_HelpOverlay(t *testing.T) {
+	m := New(nil, nil)
+	m.showHelp = true
+	view := m.View()
+
+	assert.Contains(t, view, "Key Bindings")
+	assert.Contains(t, view, "Move up")
+	assert.Contains(t, view, "Quit")
+}
+
+// --- RenderHelp tests ---
+
+func TestRenderHelp(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderHelp(keys, 80)
+
+	assert.Contains(t, result, "Key Bindings")
+	assert.Contains(t, result, "Move up")
+	assert.Contains(t, result, "Move down")
+	assert.Contains(t, result, "Quit")
+	assert.Contains(t, result, "Toggle help")
+	assert.Contains(t, result, "Force refresh")
+}
+
+// --- KeyMap tests ---
+
+func TestDefaultKeyMap(t *testing.T) {
+	km := DefaultKeyMap()
+
+	bindings := []struct {
+		name    string
+		binding key.Binding
+	}{
+		{"Up", km.Up},
+		{"Down", km.Down},
+		{"Quit", km.Quit},
+		{"Help", km.Help},
+		{"Refresh", km.Refresh},
+	}
+
+	for _, b := range bindings {
+		h := b.binding.Help()
+		assert.NotEmpty(t, h.Key, "%s should have a key", b.name)
+		assert.NotEmpty(t, h.Desc, "%s should have a description", b.name)
+	}
+}
+
+// --- Style constant tests ---
+
+func TestStatusDotConstants(t *testing.T) {
+	assert.Equal(t, "●", StatusDotActive)
+	assert.Equal(t, "◌", StatusDotIdle)
+	assert.Equal(t, "✕", StatusDotError)
+	assert.Equal(t, "✓", StatusDotDone)
+}
+
+// --- Integration-like tests ---
+
+func TestModel_FullEventFlow(t *testing.T) {
+	ch := make(chan collector.MonitorEvent, 10)
+	m := New(ch, nil)
+
+	// Send session start
+	ch <- collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "flow-test",
+		Workspace: "~/test",
+		Status:    collector.StatusThinking,
+		Timestamp: time.Now().UnixMilli(),
+		Event:     collector.EventSessionStart,
+	}
+
+	// Read event through cmd
+	cmd := m.waitForEvent()
+	msg := cmd()
+	var model tea.Model = m
+	model, _ = model.Update(msg)
+
+	result := model.(Model)
+	assert.Len(t, result.sessions, 1)
+	assert.Equal(t, "flow-test", result.sessions[0].SessionID)
+
+	// Send tool start
+	ch <- collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "flow-test",
+		Status:    collector.StatusToolRunning,
+		Timestamp: time.Now().UnixMilli(),
+		Event:     collector.EventToolStart,
+		Detail:    &collector.EventDetail{Tool: "Read", Target: "main.go"},
+	}
+
+	cmd = result.waitForEvent()
+	msg = cmd()
+	model, _ = model.Update(msg)
+	result = model.(Model)
+
+	assert.Equal(t, collector.StatusToolRunning, result.sessions[0].Status)
+	assert.Equal(t, "Read", result.sessions[0].CurrentTool)
+	assert.Equal(t, "main.go", result.sessions[0].CurrentTarget)
+
+	// Verify view renders
+	view := result.View()
+	assert.True(t, strings.Contains(view, "claude-code"))
+	assert.True(t, strings.Contains(view, "1 active"))
+}
