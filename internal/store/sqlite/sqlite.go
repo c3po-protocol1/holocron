@@ -142,11 +142,13 @@ func (s *SQLiteStore) GetSession(source, sessionID string) (*collector.SessionSt
 
 func (s *SQLiteStore) GetEvents(source, sessionID string, since int64, limit int) ([]collector.MonitorEvent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json
-		FROM events
-		WHERE source = ? AND session_id = ? AND timestamp >= ?
-		ORDER BY timestamp ASC
-		LIMIT ?`,
+		SELECT * FROM (
+			SELECT id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json
+			FROM events
+			WHERE source = ? AND session_id = ? AND timestamp >= ?
+			ORDER BY timestamp DESC
+			LIMIT ?
+		) ORDER BY timestamp ASC`,
 		source, sessionID, since, limit)
 	if err != nil {
 		return nil, err
