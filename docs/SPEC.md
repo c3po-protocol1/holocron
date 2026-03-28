@@ -22,22 +22,24 @@ Each spec is a self-contained, testable unit. Build and verify independently.
 | F3 | Claude Code Provider | [specs/F3-claude-code-provider.md](./specs/F3-claude-code-provider.md) | ✅ Done |
 | F4 | TUI Session List | [specs/F4-tui-session-list.md](./specs/F4-tui-session-list.md) | ✅ Done |
 | F5 | CLI Status Command | [specs/F5-cli-status.md](./specs/F5-cli-status.md) | ✅ Done |
-| F6 | End-to-End Wiring + README Fix | [specs/F6-wiring-and-readme.md](./specs/F6-wiring-and-readme.md) | Draft |
+| F6 | End-to-End Wiring + README Fix | [specs/F6-wiring-and-readme.md](./specs/F6-wiring-and-readme.md) | ✅ Done |
+| F7 | Active-Only Quick Toggle | [specs/F7-active-toggle.md](./specs/F7-active-toggle.md) | Draft |
 
 ### Future Features (not yet spec'd)
 
 | # | Feature | Depends On |
 |---|---------|------------|
-| F7 | OpenClaw Provider | F6 |
-| F8 | Labels & Linking | F6 |
-| F9 | TUI Detail View | F6 |
-| F10 | Daemon Mode | F6 |
-| F11 | Web UI | F10 |
+| F8 | OpenClaw Provider | F6 |
+| F9 | Labels & Linking | F6 |
+| F10 | TUI Detail View | F6 |
+| F11 | TUI Settings Panel | F7 |
+| F12 | Daemon Mode | F6 |
+| F13 | Web UI | F12 |
 
 ## Build Order
 
 ```
-F1 → F2 → F3 → F4 → F5 → F6 (wiring) → F7+ (new features)
+F1 → F2 → F3 → F4 → F5 → F6 (wiring) → F7 (active toggle) → F8+
 ```
 
 ## References
