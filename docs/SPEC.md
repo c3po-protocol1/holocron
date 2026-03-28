@@ -17,34 +17,28 @@ Each spec is a self-contained, testable unit. Build and verify independently.
 
 | # | Feature | Spec | Status |
 |---|---------|------|--------|
-| F1 | Core Types + EventBus + SQLite Store | [specs/F1-core.md](./specs/F1-core.md) | Draft |
-| F2 | Config Loading | [specs/F2-config.md](./specs/F2-config.md) | Draft |
-| F3 | Claude Code Provider | [specs/F3-claude-code-provider.md](./specs/F3-claude-code-provider.md) | Draft |
-| F4 | TUI Session List | [specs/F4-tui-session-list.md](./specs/F4-tui-session-list.md) | Draft |
-| F5 | CLI Status Command | [specs/F5-cli-status.md](./specs/F5-cli-status.md) | Draft |
+| F1 | Core Types + EventBus + SQLite Store | [specs/F1-core.md](./specs/F1-core.md) | ✅ Done |
+| F2 | Config Loading | [specs/F2-config.md](./specs/F2-config.md) | ✅ Done |
+| F3 | Claude Code Provider | [specs/F3-claude-code-provider.md](./specs/F3-claude-code-provider.md) | ✅ Done |
+| F4 | TUI Session List | [specs/F4-tui-session-list.md](./specs/F4-tui-session-list.md) | ✅ Done |
+| F5 | CLI Status Command | [specs/F5-cli-status.md](./specs/F5-cli-status.md) | ✅ Done |
+| F6 | End-to-End Wiring + README Fix | [specs/F6-wiring-and-readme.md](./specs/F6-wiring-and-readme.md) | Draft |
 
 ### Future Features (not yet spec'd)
 
 | # | Feature | Depends On |
 |---|---------|------------|
-| F6 | OpenClaw Provider | F1, F2 |
-| F7 | Labels & Linking | F1, F4 |
-| F8 | TUI Detail View | F4 |
-| F9 | Daemon Mode | F1 |
-| F10 | Web UI | F9 |
+| F7 | OpenClaw Provider | F6 |
+| F8 | Labels & Linking | F6 |
+| F9 | TUI Detail View | F6 |
+| F10 | Daemon Mode | F6 |
+| F11 | Web UI | F10 |
 
 ## Build Order
 
 ```
-F1 (core) → F2 (config) → F3 (claude code) → F4 (TUI) → F5 (CLI status)
+F1 → F2 → F3 → F4 → F5 → F6 (wiring) → F7+ (new features)
 ```
-
-Each feature is testable on its own:
-- **F1**: unit tests — events save/load, bus pub/sub works
-- **F2**: unit tests — config parses, validates, env vars expand
-- **F3**: integration test — point at real `~/.claude/projects/`, see sessions discovered
-- **F4**: manual test — launch TUI, see sessions rendered live
-- **F5**: manual test — run `holo status`, see one-shot output
 
 ## References
 
