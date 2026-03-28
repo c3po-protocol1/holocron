@@ -14,3 +14,4 @@
 - [F2 Dev Plan](docs/plans/F2-plan.md)
 - [F3 Dev Plan](docs/plans/F3-plan.md)
 - [F4 Dev Plan](docs/plans/F4-plan.md)
+- [F5 Dev Plan](docs/plans/F5-plan.md)
