@@ -10,6 +10,11 @@ type KeyMap struct {
 	Help    key.Binding
 	Refresh key.Binding
 	Active  key.Binding
+	Enter   key.Binding
+	Back    key.Binding
+	Top     key.Binding
+	Bottom  key.Binding
+	Follow  key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -38,6 +43,26 @@ func DefaultKeyMap() KeyMap {
 		Active: key.NewBinding(
 			key.WithKeys("a"),
 			key.WithHelp("a", "toggle active filter"),
+		),
+		Enter: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("Enter", "open detail"),
+		),
+		Back: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("Esc", "back"),
+		),
+		Top: key.NewBinding(
+			key.WithKeys("g"),
+			key.WithHelp("g", "top"),
+		),
+		Bottom: key.NewBinding(
+			key.WithKeys("G"),
+			key.WithHelp("G", "bottom"),
+		),
+		Follow: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "toggle follow"),
 		),
 	}
 }

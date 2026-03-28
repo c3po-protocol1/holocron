@@ -12,6 +12,19 @@ import (
 	"github.com/c3po-protocol1/holocron/internal/collector"
 )
 
+// ViewMode represents which view is currently active.
+type ViewMode string
+
+const (
+	ViewList   ViewMode = "list"
+	ViewDetail ViewMode = "detail"
+)
+
+// EventLoader loads events for a session (subset of store.Store).
+type EventLoader interface {
+	GetEvents(source, sessionID string, since int64, limit int) ([]collector.MonitorEvent, error)
+}
+
 // eventMsg wraps a MonitorEvent received from the event channel.
 type eventMsg collector.MonitorEvent
 
@@ -23,12 +36,15 @@ type Model struct {
 	sessions   []collector.SessionState
 	cursor     int
 	events     <-chan collector.MonitorEvent
+	store      EventLoader
 	showHelp   bool
 	activeOnly bool
 	width      int
 	height     int
 	eventCount int
 	keys       KeyMap
+	view       ViewMode
+	detail     *DetailModel
 }
 
 // New creates a new TUI Model.
@@ -41,7 +57,15 @@ func New(events <-chan collector.MonitorEvent, sessions []collector.SessionState
 		keys:     DefaultKeyMap(),
 		width:    80,
 		height:   24,
+		view:     ViewList,
 	}
+}
+
+// NewWithStore creates a new TUI Model with a store for loading events.
+func NewWithStore(events <-chan collector.MonitorEvent, sessions []collector.SessionState, store EventLoader) Model {
+	m := New(events, sessions)
+	m.store = store
+	return m
 }
 
 // Init implements tea.Model.
@@ -64,47 +88,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Compute visible session count for cursor bounds
-		visible := m.sessions
-		if m.activeOnly {
-			visible = filterActive(m.sessions)
+		// Route to current view
+		if m.view == ViewDetail {
+			return m.updateDetail(msg)
 		}
-
-		switch {
-		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Up):
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case key.Matches(msg, m.keys.Down):
-			if m.cursor < len(visible)-1 {
-				m.cursor++
-			}
-		case key.Matches(msg, m.keys.Help):
-			m.showHelp = !m.showHelp
-		case key.Matches(msg, m.keys.Active):
-			m.activeOnly = !m.activeOnly
-			// Re-compute visible after toggle
-			visible = m.sessions
-			if m.activeOnly {
-				visible = filterActive(m.sessions)
-			}
-			if m.cursor >= len(visible) {
-				m.cursor = 0
-			}
-		case key.Matches(msg, m.keys.Refresh):
-			// Force re-render by returning nil cmd
-		}
-		return m, nil
+		return m.updateList(msg)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.detail != nil {
+			m.detail.SetSize(msg.Width, msg.Height)
+		}
 		return m, nil
 
 	case eventMsg:
-		m.applyEvent(collector.MonitorEvent(msg))
+		ev := collector.MonitorEvent(msg)
+		m.applyEvent(ev)
+		// Route event to detail model if active and matching
+		if m.view == ViewDetail && m.detail != nil && m.detail.MatchesSession(ev.Source, ev.SessionID) {
+			m.detail.AppendEvent(ev)
+		}
 		return m, m.waitForEvent()
 
 	case tickMsg:
@@ -114,8 +118,112 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateList handles key events in the list view.
+func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	visible := m.sessions
+	if m.activeOnly {
+		visible = filterActive(m.sessions)
+	}
+
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+	case key.Matches(msg, m.keys.Up):
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case key.Matches(msg, m.keys.Down):
+		if m.cursor < len(visible)-1 {
+			m.cursor++
+		}
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = !m.showHelp
+	case key.Matches(msg, m.keys.Active):
+		m.activeOnly = !m.activeOnly
+		visible = m.sessions
+		if m.activeOnly {
+			visible = filterActive(m.sessions)
+		}
+		if m.cursor >= len(visible) {
+			m.cursor = 0
+		}
+	case key.Matches(msg, m.keys.Enter):
+		return m.openDetail(visible)
+	case key.Matches(msg, m.keys.Refresh):
+		// Force re-render
+	}
+	return m, nil
+}
+
+// updateDetail handles key events in the detail view.
+func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+	case key.Matches(msg, m.keys.Back):
+		m.view = ViewList
+		m.detail = nil
+		return m, nil
+	case key.Matches(msg, m.keys.Up):
+		m.detail.ScrollUp()
+	case key.Matches(msg, m.keys.Down):
+		m.detail.ScrollDown()
+	case key.Matches(msg, m.keys.Top):
+		m.detail.ScrollToTop()
+	case key.Matches(msg, m.keys.Bottom):
+		m.detail.ScrollToBottom()
+	case key.Matches(msg, m.keys.Follow):
+		m.detail.ToggleFollow()
+	case key.Matches(msg, m.keys.Help):
+		m.showHelp = !m.showHelp
+	}
+	return m, nil
+}
+
+// openDetail transitions from list to detail view.
+func (m Model) openDetail(visible []collector.SessionState) (tea.Model, tea.Cmd) {
+	if len(visible) == 0 || m.cursor >= len(visible) {
+		return m, nil
+	}
+
+	session := visible[m.cursor]
+
+	// Load events from store
+	var events []collector.MonitorEvent
+	if m.store != nil {
+		loaded, err := m.store.GetEvents(session.Source, session.SessionID, 0, 200)
+		if err == nil {
+			events = loaded
+		}
+	}
+
+	m.detail = NewDetailModel(session, events, m.width, m.height)
+	m.view = ViewDetail
+	return m, nil
+}
+
 // View implements tea.Model.
 func (m Model) View() string {
+	if m.view == ViewDetail && m.detail != nil {
+		if m.showHelp {
+			return m.renderDetailWithHelp()
+		}
+		return m.detail.View()
+	}
+
+	return m.renderListView()
+}
+
+func (m Model) renderDetailWithHelp() string {
+	var b strings.Builder
+	header := headerStyle.Render("Holocron 🔭 — Session Detail")
+	b.WriteString(header)
+	b.WriteString("\n\n")
+	b.WriteString(RenderDetailHelp(m.keys, m.width))
+	return lipgloss.NewStyle().MaxWidth(m.width).Render(b.String())
+}
+
+func (m Model) renderListView() string {
 	var b strings.Builder
 
 	// Header

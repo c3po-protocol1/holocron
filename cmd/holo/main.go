@@ -195,7 +195,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 
-	model := tui.New(c.Subscribe(), sessions)
+	model := tui.NewWithStore(c.Subscribe(), sessions, st)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
