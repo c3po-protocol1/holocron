@@ -354,6 +354,66 @@ func TestFormatTokenDetailed_NoCacheRead(t *testing.T) {
 	assert.NotContains(t, result, "cache")
 }
 
+// --- Edge cases (T7) ---
+
+func TestDetailModel_SessionEndsWhileViewing(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{
+		Source:    "claude-code",
+		SessionID: "s1",
+		Status:    collector.StatusToolRunning,
+		StartedAt: now.Add(-5 * time.Minute).UnixMilli(),
+	}
+	dm := NewDetailModel(session, nil, 80, 24)
+
+	// Session ends
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "s1",
+		Status:    collector.StatusDone,
+		Timestamp: now.UnixMilli(),
+		Event:     collector.EventSessionEnd,
+	}
+	dm.AppendEvent(ev)
+
+	assert.Equal(t, collector.StatusDone, dm.session.Status)
+	assert.Equal(t, "", dm.session.CurrentTool)
+	assert.Len(t, dm.events, 1)
+
+	// View still renders
+	view := dm.View()
+	assert.Contains(t, view, "done")
+	assert.Contains(t, view, "session.end")
+}
+
+func TestDetailModel_ResizeAdjustsEventLog(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{
+		Source:    "claude-code",
+		SessionID: "s1",
+		StartedAt: now.UnixMilli(),
+	}
+	events := make([]collector.MonitorEvent, 50)
+	for i := range events {
+		events[i] = collector.MonitorEvent{
+			Source: "claude-code", SessionID: "s1",
+			Event: collector.EventMessage, Timestamp: now.Add(time.Duration(i) * time.Second).UnixMilli(),
+		}
+	}
+
+	dm := NewDetailModel(session, events, 80, 24)
+	h1 := dm.eventLogHeight()
+
+	// Resize to larger terminal
+	dm.SetSize(120, 50)
+	h2 := dm.eventLogHeight()
+	assert.Greater(t, h2, h1, "larger terminal should show more event lines")
+
+	// View should still render without panic
+	view := dm.View()
+	assert.Contains(t, view, "Event Log")
+}
+
 // --- Ensure MatchesSession works ---
 
 func TestDetailModel_MatchesSession(t *testing.T) {
