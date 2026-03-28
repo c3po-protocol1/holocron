@@ -19,16 +19,17 @@ type Config struct {
 }
 
 type SourceConfig struct {
-	Type           string `yaml:"type"`
-	Discover       string `yaml:"discover"`
-	SessionDir     string `yaml:"sessionDir"`
-	WatchProcesses bool   `yaml:"watchProcesses"`
-	TailActive     bool   `yaml:"tailActive"`
-	PollIntervalMs int    `yaml:"pollIntervalMs"`
-	Gateway        string `yaml:"gateway"`
-	Token          string `yaml:"token"`
-	Path           string `yaml:"path"`
-	Format         string `yaml:"format"`
+	Type            string `yaml:"type"`
+	Discover        string `yaml:"discover"`
+	SessionDir      string `yaml:"sessionDir"`
+	WatchProcesses  bool   `yaml:"watchProcesses"`
+	TailActive      bool   `yaml:"tailActive"`
+	PollIntervalMs  int    `yaml:"pollIntervalMs"`
+	IdleThresholdMs int    `yaml:"idleThresholdMs"`
+	Gateway         string `yaml:"gateway"`
+	Token           string `yaml:"token"`
+	Path            string `yaml:"path"`
+	Format          string `yaml:"format"`
 }
 
 type StoreConfig struct {

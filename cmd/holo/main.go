@@ -14,6 +14,7 @@ import (
 	"github.com/c3po-protocol1/holocron/internal/collector"
 	"github.com/c3po-protocol1/holocron/internal/config"
 	claudecode "github.com/c3po-protocol1/holocron/internal/providers/claudecode"
+	"github.com/c3po-protocol1/holocron/internal/providers/openclaw"
 	"github.com/c3po-protocol1/holocron/internal/store/sqlite"
 	"github.com/c3po-protocol1/holocron/internal/tui"
 )
@@ -116,12 +117,18 @@ func pollDuration(src config.SourceConfig) time.Duration {
 func buildCollector(cfg config.Config, st collector.Store) *collector.Collector {
 	c := collector.New(st)
 	for _, src := range cfg.Sources {
-		if src.Type == "claude-code" {
+		switch src.Type {
+		case "claude-code":
 			dir := config.ExpandTilde(src.SessionDir)
 			if dir == "" {
 				dir = defaultClaudeDir()
 			}
 			c.AddProvider(claudecode.New(dir, pollDuration(src)))
+		case "openclaw":
+			c.AddProvider(openclaw.New(openclaw.Options{
+				PollInterval:    pollDuration(src),
+				IdleThresholdMs: int64(src.IdleThresholdMs),
+			}))
 		}
 	}
 	return c

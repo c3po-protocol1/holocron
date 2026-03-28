@@ -58,6 +58,13 @@ func TruncateID(id string) string {
 
 // RenderSessionRow renders a single session row.
 func RenderSessionRow(s collector.SessionState, selected bool, now time.Time) string {
+	if s.Source == "openclaw" {
+		return renderOpenClawRow(s, selected, now)
+	}
+	return renderDefaultRow(s, selected, now)
+}
+
+func renderDefaultRow(s collector.SessionState, selected bool, now time.Time) string {
 	var b strings.Builder
 
 	elapsed := now.Sub(time.Unix(0, s.LastEventAt*int64(time.Millisecond)))
@@ -103,6 +110,108 @@ func RenderSessionRow(s collector.SessionState, selected bool, now time.Time) st
 	}
 
 	return b.String()
+}
+
+func renderOpenClawRow(s collector.SessionState, selected bool, now time.Time) string {
+	var b strings.Builder
+
+	elapsed := now.Sub(time.Unix(0, s.LastEventAt*int64(time.Millisecond)))
+	if s.StartedAt > 0 {
+		elapsed = now.Sub(time.Unix(0, s.StartedAt*int64(time.Millisecond)))
+	}
+
+	indicator := StatusIndicator(s.Status)
+	elapsedStr := FormatElapsed(elapsed)
+
+	rowStyle := normalRowStyle
+	cursor := "  "
+	if selected {
+		rowStyle = selectedRowStyle
+		cursor = "▶ "
+	}
+
+	// Agent name from labels (fallback to truncated session ID)
+	agent := s.Labels["agent"]
+	if agent == "" {
+		agent = TruncateID(s.SessionID)
+	}
+
+	statusWord := "idle"
+	switch s.Status {
+	case collector.StatusThinking, collector.StatusToolRunning:
+		statusWord = "active"
+	case collector.StatusError:
+		statusWord = "error"
+	case collector.StatusDone:
+		statusWord = "done"
+	}
+
+	// Line 1: cursor source | agent | status indicator + word | elapsed
+	line1 := fmt.Sprintf("%s%-14s %-14s %s %s  %s",
+		cursor,
+		rowStyle.Render(s.Source),
+		rowStyle.Render(agent),
+		indicator,
+		dimStyle.Render(statusWord),
+		dimStyle.Render(elapsedStr),
+	)
+	b.WriteString(line1)
+
+	// Line 2: channel:session_type
+	sessionType := s.Labels["session_type"]
+	channel := s.Labels["channel"]
+	if sessionType != "" {
+		line2 := sessionType
+		if channel != "" {
+			line2 = channel + ":" + sessionType
+		}
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  %-14s %s", "", dimStyle.Render(line2)))
+	}
+
+	// Line 3: tokens info + model
+	if s.TokenUsage != nil || s.Labels["model"] != "" {
+		var parts []string
+		if s.TokenUsage != nil {
+			total := s.TokenUsage.Input + s.TokenUsage.Output
+			tokenStr := formatTokenCount(total)
+			if budget, ok := s.Labels["total_tokens"]; ok {
+				if pct, ok2 := s.Labels["percent_used"]; ok2 {
+					tokenStr = fmt.Sprintf("%s / %s (%s%%)", tokenStr, formatTokenCountStr(budget), pct)
+				}
+			}
+			parts = append(parts, "tokens: "+tokenStr)
+		}
+		if model := s.Labels["model"]; model != "" {
+			parts = append(parts, model)
+		}
+		if len(parts) > 0 {
+			b.WriteString("\n")
+			b.WriteString(fmt.Sprintf("  %-14s %s", "", dimStyle.Render(strings.Join(parts, " · "))))
+		}
+	}
+
+	return b.String()
+}
+
+// formatTokenCount formats a token count into a human-readable string (e.g. 111k, 1M).
+func formatTokenCount(n int64) string {
+	if n >= 1_000_000 {
+		return fmt.Sprintf("%dM", n/1_000_000)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%dk", n/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// formatTokenCountStr formats a token count string into human-readable form.
+func formatTokenCountStr(s string) string {
+	var n int64
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		return s
+	}
+	return formatTokenCount(n)
 }
 
 // filterActive returns only sessions that are not idle or done.
