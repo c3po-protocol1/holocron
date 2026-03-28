@@ -25,21 +25,22 @@ Each spec is a self-contained, testable unit. Build and verify independently.
 | F6 | End-to-End Wiring + README Fix | [specs/F6-wiring-and-readme.md](./specs/F6-wiring-and-readme.md) | ✅ Done |
 | F7 | Active-Only Quick Toggle | [specs/F7-active-toggle.md](./specs/F7-active-toggle.md) | Draft |
 | F8 | OpenClaw Provider | [specs/F8-openclaw-provider.md](./specs/F8-openclaw-provider.md) | Draft |
+| F9 | Session Detail View | [specs/F9-detail-view.md](./specs/F9-detail-view.md) | Draft |
 
 ### Future Features (not yet spec'd)
 
 | # | Feature | Depends On |
 |---|---------|------------|
-| F9 | Labels & Linking | F8 |
-| F10 | TUI Detail View | F8 |
-| F11 | TUI Settings Panel | F7 |
-| F12 | Daemon Mode | F8 |
+| F10 | Labels & Linking | F9 |
+
+| F11 | TUI Settings Panel | F9 |
+| F12 | Daemon Mode | F9 |
 | F13 | Web UI | F12 |
 
 ## Build Order
 
 ```
-F1 → F2 → F3 → F4 → F5 → F6 → F7 (active toggle) → F8 (openclaw) → F9+
+F1 → F2 → F3 → F4 → F5 → F6 → F7 (active toggle) → F8 (openclaw) → F9 (detail view) → F10+
 ```
 
 ## References
