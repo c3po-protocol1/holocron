@@ -18,6 +18,7 @@ func RenderHelp(keys KeyMap, width int) string {
 		{"q / Ctrl+C", "Quit"},
 		{"?", "Toggle help"},
 		{"r", "Force refresh"},
+		{"a", "toggle active-only filter"},
 	}
 
 	var b strings.Builder

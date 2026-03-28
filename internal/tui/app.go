@@ -24,6 +24,7 @@ type Model struct {
 	cursor     int
 	events     <-chan collector.MonitorEvent
 	showHelp   bool
+	activeOnly bool
 	width      int
 	height     int
 	eventCount int
@@ -63,6 +64,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Compute visible session count for cursor bounds
+		visible := m.sessions
+		if m.activeOnly {
+			visible = filterActive(m.sessions)
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
@@ -71,11 +78,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case key.Matches(msg, m.keys.Down):
-			if m.cursor < len(m.sessions)-1 {
+			if m.cursor < len(visible)-1 {
 				m.cursor++
 			}
 		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
+		case key.Matches(msg, m.keys.Active):
+			m.activeOnly = !m.activeOnly
+			// Re-compute visible after toggle
+			visible = m.sessions
+			if m.activeOnly {
+				visible = filterActive(m.sessions)
+			}
+			if m.cursor >= len(visible) {
+				m.cursor = 0
+			}
 		case key.Matches(msg, m.keys.Refresh):
 			// Force re-render by returning nil cmd
 		}
@@ -106,6 +123,13 @@ func (m Model) View() string {
 	b.WriteString(header)
 	b.WriteString("\n\n")
 
+	// Compute visible sessions
+	visible := m.sessions
+	if m.activeOnly {
+		visible = filterActive(m.sessions)
+	}
+	hiddenCount := len(m.sessions) - len(visible)
+
 	if m.showHelp {
 		b.WriteString(RenderHelp(m.keys, m.width))
 		b.WriteString("\n\n")
@@ -118,7 +142,11 @@ func (m Model) View() string {
 		b.WriteString("\n")
 
 		// Session list
-		b.WriteString(RenderSessionList(m.sessions, m.cursor, time.Now()))
+		if m.activeOnly && len(visible) == 0 && len(m.sessions) > 0 {
+			b.WriteString(dimStyle.Render("No active sessions. Press 'a' to show all."))
+		} else {
+			b.WriteString(RenderSessionList(visible, m.cursor, time.Now()))
+		}
 		b.WriteString("\n")
 	}
 
@@ -139,8 +167,13 @@ func (m Model) View() string {
 		}
 	}
 
-	stats := footerStyle.Render(fmt.Sprintf("%d sessions │ %d active │ %d events",
-		len(m.sessions), activeCount, m.eventCount))
+	filterLabel := "[a]ctive: off"
+	if m.activeOnly {
+		filterLabel = fmt.Sprintf("[a]ctive: on (%d hidden)", hiddenCount)
+	}
+
+	stats := footerStyle.Render(fmt.Sprintf("%d sessions │ %d active │ %d events │ %s",
+		len(m.sessions), activeCount, m.eventCount, filterLabel))
 	b.WriteString(stats)
 
 	// Apply width constraint

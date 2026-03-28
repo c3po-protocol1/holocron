@@ -105,6 +105,17 @@ func RenderSessionRow(s collector.SessionState, selected bool, now time.Time) st
 	return b.String()
 }
 
+// filterActive returns only sessions that are not idle or done.
+func filterActive(sessions []collector.SessionState) []collector.SessionState {
+	var out []collector.SessionState
+	for _, s := range sessions {
+		if s.Status != collector.StatusIdle && s.Status != collector.StatusDone {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // RenderEmptyState renders the empty state message.
 func RenderEmptyState() string {
 	return dimStyle.Render("No sessions detected. Check your config: ~/.holocron/config.yaml")

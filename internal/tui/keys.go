@@ -9,6 +9,7 @@ type KeyMap struct {
 	Quit    key.Binding
 	Help    key.Binding
 	Refresh key.Binding
+	Active  key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -33,6 +34,10 @@ func DefaultKeyMap() KeyMap {
 		Refresh: key.NewBinding(
 			key.WithKeys("r"),
 			key.WithHelp("r", "refresh"),
+		),
+		Active: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "toggle active filter"),
 		),
 	}
 }
