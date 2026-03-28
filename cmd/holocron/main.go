@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/c3po-protocol1/holocron/internal/cli"
+	"github.com/c3po-protocol1/holocron/internal/collector"
 	"github.com/c3po-protocol1/holocron/internal/config"
+	claudecode "github.com/c3po-protocol1/holocron/internal/providers/claudecode"
 	"github.com/c3po-protocol1/holocron/internal/store/sqlite"
 	"github.com/c3po-protocol1/holocron/internal/tui"
 )
@@ -98,12 +101,51 @@ func loadConfigAndStore() (config.Config, *sqlite.SQLiteStore, error) {
 	return cfg, st, nil
 }
 
+func defaultClaudeDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude", "projects")
+}
+
+func pollDuration(src config.SourceConfig) time.Duration {
+	if src.PollIntervalMs > 0 {
+		return time.Duration(src.PollIntervalMs) * time.Millisecond
+	}
+	return 0 // provider uses its own default
+}
+
+func buildCollector(cfg config.Config, st collector.Store) *collector.Collector {
+	c := collector.New(st)
+	for _, src := range cfg.Sources {
+		if src.Type == "claude-code" {
+			dir := config.ExpandTilde(src.SessionDir)
+			if dir == "" {
+				dir = defaultClaudeDir()
+			}
+			c.AddProvider(claudecode.New(dir, pollDuration(src)))
+		}
+	}
+	return c
+}
+
 func runStatus(jsonOutput bool, source string, activeOnly bool) error {
-	_, st, err := loadConfigAndStore()
+	cfg, st, err := loadConfigAndStore()
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+
+	// Start providers briefly for initial discovery
+	c := buildCollector(cfg, st)
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := c.Start(ctx); err != nil {
+		cancel()
+		return fmt.Errorf("collector: %w", err)
+	}
+
+	// Allow initial scan to complete
+	time.Sleep(500 * time.Millisecond)
+	cancel()
+	c.Stop()
 
 	sessions, err := st.ListSessions()
 	if err != nil {
@@ -126,20 +168,27 @@ func runStatus(jsonOutput bool, source string, activeOnly bool) error {
 }
 
 func runTUI(cmd *cobra.Command, args []string) error {
-	_, st, err := loadConfigAndStore()
+	cfg, st, err := loadConfigAndStore()
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+
+	c := buildCollector(cfg, st)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := c.Start(ctx); err != nil {
+		return fmt.Errorf("collector: %w", err)
+	}
+	defer c.Stop()
 
 	sessions, err := st.ListSessions()
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 
-	// TUI receives a nil event channel — no live provider updates in this mode yet.
-	// When collector/providers are wired, this will become a real channel.
-	model := tui.New(nil, sessions)
+	model := tui.New(c.Subscribe(), sessions)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

@@ -217,6 +217,57 @@ sources:
 	assert.Contains(t, err.Error(), "pollIntervalMs")
 }
 
+func TestExpandTilde(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"tilde prefix", "~/foo/bar", filepath.Join(home, "foo/bar")},
+		{"no tilde", "/absolute/path", "/absolute/path"},
+		{"empty", "", ""},
+		{"tilde only", "~/", home},
+		{"tilde in middle", "/not/~/expanded", "/not/~/expanded"},
+		{"relative", "relative/path", "relative/path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ExpandTilde(tt.in))
+		})
+	}
+}
+
+func TestTildeExpansionAppliedAfterLoad(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+sources:
+  - type: claude-code
+    sessionDir: ~/my-sessions
+    path: ~/my-path
+    pollIntervalMs: 2000
+store:
+  path: ~/my-store.db
+  retentionDays: 30
+`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(yaml), 0644))
+
+	cfg, err := LoadFile(cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, filepath.Join(home, "my-sessions"), cfg.Sources[0].SessionDir)
+	assert.Equal(t, filepath.Join(home, "my-path"), cfg.Sources[0].Path)
+	assert.Equal(t, filepath.Join(home, "my-store.db"), cfg.Store.Path)
+}
+
 func TestRetentionDaysTooLow(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
