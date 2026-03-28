@@ -1,5 +1,7 @@
 package openclaw
 
+import "strings"
+
 // StatusResponse is the top-level response from `openclaw gateway call status --json`.
 type StatusResponse struct {
 	RuntimeVersion string        `json:"runtimeVersion"`
@@ -68,7 +70,7 @@ func (i SessionKeyInfo) ToLabels() map[string]string {
 //	agent:r2d2:subagent:uuid              → sub-agent
 //	agent:r2d2:cron:...:run:uuid          → cron run instance
 func ParseSessionKey(key string) SessionKeyInfo {
-	parts := splitKey(key)
+	parts := strings.Split(key, ":")
 
 	// Must start with "agent" and have at least agent ID
 	if len(parts) < 3 || parts[0] != "agent" {
@@ -119,16 +121,3 @@ func ParseSessionKey(key string) SessionKeyInfo {
 	}
 }
 
-// splitKey splits a colon-separated key into parts.
-func splitKey(key string) []string {
-	var parts []string
-	start := 0
-	for i := 0; i < len(key); i++ {
-		if key[i] == ':' {
-			parts = append(parts, key[start:i])
-			start = i + 1
-		}
-	}
-	parts = append(parts, key[start:])
-	return parts
-}
