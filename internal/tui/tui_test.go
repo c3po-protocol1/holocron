@@ -657,6 +657,258 @@ func TestRenderSessionRow_OpenClaw_FallbackSessionID(t *testing.T) {
 	assert.Contains(t, result, "abcdefghij..")
 }
 
+// --- ViewMode and detail integration tests (T4) ---
+
+// mockStore implements EventLoader for testing.
+type mockStore struct {
+	events []collector.MonitorEvent
+}
+
+func (m *mockStore) GetEvents(source, sessionID string, since int64, limit int) ([]collector.MonitorEvent, error) {
+	var result []collector.MonitorEvent
+	for _, ev := range m.events {
+		if ev.Source == source && ev.SessionID == sessionID {
+			result = append(result, ev)
+		}
+	}
+	if limit > 0 && len(result) > limit {
+		result = result[len(result)-limit:]
+	}
+	return result, nil
+}
+
+func TestModel_ViewMode_DefaultIsList(t *testing.T) {
+	m := New(nil, nil)
+	assert.Equal(t, ViewList, m.view)
+	assert.Nil(t, m.detail)
+}
+
+func TestModel_EnterOpensDetail(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{
+			Source:    "claude-code",
+			SessionID: "s1",
+			Status:    collector.StatusThinking,
+			StartedAt: now.Add(-1 * time.Minute).UnixMilli(),
+		},
+	}
+	store := &mockStore{
+		events: []collector.MonitorEvent{
+			{Source: "claude-code", SessionID: "s1", Event: collector.EventSessionStart, Timestamp: now.Add(-1 * time.Minute).UnixMilli()},
+		},
+	}
+	m := NewWithStore(nil, sessions, store)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	result := model.(Model)
+	assert.Equal(t, ViewDetail, result.view)
+	require.NotNil(t, result.detail)
+	assert.Equal(t, "s1", result.detail.session.SessionID)
+	assert.Len(t, result.detail.events, 1)
+}
+
+func TestModel_EnterNoSessions(t *testing.T) {
+	m := New(nil, nil)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	result := model.(Model)
+	assert.Equal(t, ViewList, result.view)
+	assert.Nil(t, result.detail)
+}
+
+func TestModel_EscReturnsToList(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{Source: "claude-code", SessionID: "s1", Status: collector.StatusThinking, StartedAt: now.UnixMilli()},
+	}
+	m := NewWithStore(nil, sessions, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(sessions[0], nil, 80, 24)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEscape})
+
+	result := model.(Model)
+	assert.Equal(t, ViewList, result.view)
+	assert.Nil(t, result.detail)
+}
+
+func TestModel_DetailView_EventRouting(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{Source: "claude-code", SessionID: "s1", Status: collector.StatusThinking, StartedAt: now.UnixMilli()},
+	}
+	m := NewWithStore(nil, sessions, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(sessions[0], nil, 80, 24)
+
+	// Matching event should be routed to detail
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "s1",
+		Status:    collector.StatusToolRunning,
+		Timestamp: now.UnixMilli(),
+		Event:     collector.EventToolStart,
+		Detail:    &collector.EventDetail{Tool: "Edit", Target: "foo.go"},
+	}
+
+	var model tea.Model = m
+	model, _ = model.Update(eventMsg(ev))
+	result := model.(Model)
+
+	assert.Len(t, result.detail.events, 1)
+	assert.Equal(t, "Edit", result.detail.events[0].Detail.Tool)
+}
+
+func TestModel_DetailView_NonMatchingEventNotRouted(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{Source: "claude-code", SessionID: "s1", Status: collector.StatusThinking, StartedAt: now.UnixMilli()},
+	}
+	m := NewWithStore(nil, sessions, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(sessions[0], nil, 80, 24)
+
+	// Event for different session should NOT be routed
+	ev := collector.MonitorEvent{
+		Source:    "claude-code",
+		SessionID: "s2",
+		Status:    collector.StatusThinking,
+		Timestamp: now.UnixMilli(),
+	}
+
+	var model tea.Model = m
+	model, _ = model.Update(eventMsg(ev))
+	result := model.(Model)
+
+	assert.Empty(t, result.detail.events)
+}
+
+func TestModel_DetailView_ScrollKeys(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "claude-code", SessionID: "s1", StartedAt: now.UnixMilli()}
+	events := make([]collector.MonitorEvent, 50)
+	for i := range events {
+		events[i] = collector.MonitorEvent{
+			Source: "claude-code", SessionID: "s1",
+			Event: collector.EventMessage, Timestamp: now.Add(time.Duration(i) * time.Second).UnixMilli(),
+		}
+	}
+
+	m := NewWithStore(nil, []collector.SessionState{session}, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(session, events, 80, 24)
+
+	// 'g' should jump to top
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	result := model.(Model)
+	assert.Equal(t, 0, result.detail.scroll)
+	assert.False(t, result.detail.follow)
+
+	// 'G' should jump to bottom
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	result = model.(Model)
+	assert.True(t, result.detail.follow)
+
+	// 'f' should toggle follow
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	result = model.(Model)
+	assert.False(t, result.detail.follow)
+}
+
+func TestModel_DetailView_Renders(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{
+		Source:    "claude-code",
+		SessionID: "s1",
+		Status:    collector.StatusThinking,
+		StartedAt: now.Add(-30 * time.Second).UnixMilli(),
+	}
+	m := NewWithStore(nil, []collector.SessionState{session}, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(session, nil, 80, 24)
+
+	view := m.View()
+	assert.Contains(t, view, "Session Detail")
+	assert.Contains(t, view, "claude-code")
+	assert.Contains(t, view, "[Esc]back")
+}
+
+func TestModel_DetailView_HelpOverlay(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "claude-code", SessionID: "s1", StartedAt: now.UnixMilli()}
+	m := NewWithStore(nil, []collector.SessionState{session}, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(session, nil, 80, 24)
+	m.showHelp = true
+
+	view := m.View()
+	assert.Contains(t, view, "Key Bindings")
+	assert.Contains(t, view, "Back to session list")
+	assert.Contains(t, view, "Toggle follow")
+}
+
+func TestModel_DetailView_WindowResize(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "claude-code", SessionID: "s1", StartedAt: now.UnixMilli()}
+	m := NewWithStore(nil, []collector.SessionState{session}, &mockStore{})
+	m.view = ViewDetail
+	m.detail = NewDetailModel(session, nil, 80, 24)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	result := model.(Model)
+
+	assert.Equal(t, 120, result.detail.width)
+	assert.Equal(t, 40, result.detail.height)
+}
+
+// --- Key bindings tests (T5) ---
+
+func TestDefaultKeyMap_IncludesDetailBindings(t *testing.T) {
+	km := DefaultKeyMap()
+
+	bindings := []struct {
+		name    string
+		binding key.Binding
+	}{
+		{"Enter", km.Enter},
+		{"Back", km.Back},
+		{"Top", km.Top},
+		{"Bottom", km.Bottom},
+		{"Follow", km.Follow},
+	}
+
+	for _, b := range bindings {
+		h := b.binding.Help()
+		assert.NotEmpty(t, h.Key, "%s should have a key", b.name)
+		assert.NotEmpty(t, h.Desc, "%s should have a description", b.name)
+	}
+}
+
+func TestRenderDetailHelp(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderDetailHelp(keys, 80)
+	assert.Contains(t, result, "Back to session list")
+	assert.Contains(t, result, "Scroll up")
+	assert.Contains(t, result, "Scroll down")
+	assert.Contains(t, result, "Jump to top")
+	assert.Contains(t, result, "Jump to bottom")
+	assert.Contains(t, result, "Toggle follow")
+}
+
+func TestRenderHelp_ShowsEnterBinding(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderHelp(keys, 80)
+	assert.Contains(t, result, "Open session detail")
+}
+
 // --- Integration-like tests ---
 
 func TestModel_FullEventFlow(t *testing.T) {

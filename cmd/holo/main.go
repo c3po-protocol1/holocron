@@ -19,7 +19,7 @@ import (
 	"github.com/c3po-protocol1/holocron/internal/tui"
 )
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
@@ -195,7 +195,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 
-	model := tui.New(c.Subscribe(), sessions)
+	model := tui.NewWithStore(c.Subscribe(), sessions, st)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
