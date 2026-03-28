@@ -552,6 +552,111 @@ func TestDefaultKeyMap_IncludesActive(t *testing.T) {
 	assert.NotEmpty(t, h.Desc)
 }
 
+// --- OpenClaw rendering tests ---
+
+func TestRenderSessionRow_OpenClaw_ShowsAgentName(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "openclaw",
+		SessionID: "sess-1",
+		Status:    collector.StatusThinking,
+		StartedAt: now.Add(-30 * time.Second).UnixMilli(),
+		Labels: map[string]string{
+			"agent":        "r2d2",
+			"session_type": "direct",
+			"channel":      "discord",
+			"model":        "opus-4",
+		},
+		TokenUsage: &collector.TokenUsage{Input: 100000, Output: 11000},
+	}
+
+	result := RenderSessionRow(s, false, now)
+	assert.Contains(t, result, "openclaw")
+	assert.Contains(t, result, "r2d2")
+	assert.Contains(t, result, "active")
+	assert.Contains(t, result, "discord:direct")
+	assert.Contains(t, result, "opus-4")
+	assert.Contains(t, result, "tokens:")
+}
+
+func TestRenderSessionRow_OpenClaw_IdleSession(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "openclaw",
+		SessionID: "sess-2",
+		Status:    collector.StatusIdle,
+		StartedAt: now.Add(-42 * time.Minute).UnixMilli(),
+		Labels: map[string]string{
+			"agent":        "r2d2",
+			"session_type": "cron",
+		},
+	}
+
+	result := RenderSessionRow(s, false, now)
+	assert.Contains(t, result, "idle")
+	assert.Contains(t, result, "cron")
+}
+
+func TestRenderSessionRow_OpenClaw_WithTokenBudget(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "openclaw",
+		SessionID: "sess-3",
+		Status:    collector.StatusThinking,
+		StartedAt: now.Add(-2 * time.Second).UnixMilli(),
+		Labels: map[string]string{
+			"agent":        "yoda",
+			"session_type": "direct",
+			"channel":      "discord",
+			"model":        "opus-4",
+			"total_tokens":  "1000000",
+			"percent_used":  "11",
+		},
+		TokenUsage: &collector.TokenUsage{Input: 100000, Output: 12000},
+	}
+
+	result := RenderSessionRow(s, false, now)
+	assert.Contains(t, result, "112k / 1M (11%)")
+	assert.Contains(t, result, "opus-4")
+}
+
+func TestFormatTokenCount(t *testing.T) {
+	assert.Equal(t, "0", formatTokenCount(0))
+	assert.Equal(t, "500", formatTokenCount(500))
+	assert.Equal(t, "1k", formatTokenCount(1000))
+	assert.Equal(t, "111k", formatTokenCount(111000))
+	assert.Equal(t, "1M", formatTokenCount(1000000))
+	assert.Equal(t, "2M", formatTokenCount(2500000))
+}
+
+func TestRenderSessionRow_OpenClaw_Selected(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "openclaw",
+		SessionID: "sess-1",
+		Status:    collector.StatusThinking,
+		StartedAt: now.Add(-10 * time.Second).UnixMilli(),
+		Labels:    map[string]string{"agent": "r2d2", "session_type": "direct"},
+	}
+
+	result := RenderSessionRow(s, true, now)
+	assert.Contains(t, result, "▶")
+}
+
+func TestRenderSessionRow_OpenClaw_FallbackSessionID(t *testing.T) {
+	now := time.Now()
+	s := collector.SessionState{
+		Source:    "openclaw",
+		SessionID: "abcdefghijklmnop",
+		Status:    collector.StatusIdle,
+		StartedAt: now.Add(-10 * time.Second).UnixMilli(),
+		Labels:    map[string]string{},
+	}
+
+	result := RenderSessionRow(s, false, now)
+	assert.Contains(t, result, "abcdefghij..")
+}
+
 // --- Integration-like tests ---
 
 func TestModel_FullEventFlow(t *testing.T) {
