@@ -6,17 +6,20 @@
 
 ## What is Holocron?
 
-Holocron monitors AI coding tools (Claude Code, Codex, Gemini, etc.) and orchestrators (OpenClaw, etc.) from a single terminal UI. Each source is independent — Holocron just shows you what's happening.
+Holocron monitors AI coding tools (Claude Code, Codex, etc.) and orchestrators (OpenClaw) from a single terminal UI. Each source is independent — Holocron just shows you what's happening.
 
 ## Features
 
 - 🔍 **Auto-discover** running Claude Code sessions
+- 🌐 **OpenClaw provider** — monitor all OpenClaw agents via polling + smart diff
 - 📊 **Unified view** across multiple AI coding tools
 - 💾 **SQLite storage** — history survives restarts
 - 🖥️ **TUI first** — Bubbletea-powered terminal UI
 - 📋 **CLI status** — one-shot summary with `holo status`
-- 🏷️ **Labels** — link sessions to projects, agents, or tasks (coming soon)
-- 🌐 **Web UI** — same data, browser renderer (coming soon)
+- 🔎 **Session detail** — press Enter to see full session info + scrollable event log
+- 🏷️ **Labels & grouping** — auto-labels from providers, glob-based config rules, `g` key cycles group modes
+- ⚡ **Active filter** — press `a` to toggle active-only view
+- 📊 **Follow mode** — press `f` in detail view to auto-scroll to new events
 
 ## Quick Start
 
@@ -42,6 +45,7 @@ holo status --json
 
 # Filter by source
 holo status --source claude-code
+holo status --source openclaw
 
 # Show only active sessions
 holo status --active
@@ -49,6 +53,28 @@ holo status --active
 # Print version
 holo version
 ```
+
+## TUI Key Bindings
+
+### Session List
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate sessions |
+| `Enter` | Open session detail view |
+| `a` | Toggle active-only filter |
+| `g` | Cycle group mode (none → agent → channel) |
+| `?` | Toggle help |
+| `q` | Quit |
+
+### Session Detail
+| Key | Action |
+|-----|--------|
+| `Esc` | Return to session list |
+| `↑/↓` or `j/k` | Scroll event log |
+| `G` | Jump to bottom (newest) |
+| `g` | Jump to top (oldest) |
+| `f` | Toggle follow mode (auto-scroll) |
+| `?` | Toggle help |
 
 ## Architecture
 
@@ -70,25 +96,58 @@ Sources (independent)          Unified Layer          Renderers
 ```yaml
 # ~/.holocron/config.yaml
 sources:
+  # Claude Code — auto-discover sessions
   - type: claude-code
     discover: auto
+    sessionDir: ~/.claude/projects/
     watchProcesses: true
+    tailActive: true
+    pollIntervalMs: 2000
 
+  # OpenClaw — monitor agent sessions
   - type: openclaw
-    gateway: ws://127.0.0.1:18789
-    token: ${OPENCLAW_GATEWAY_TOKEN}
+    pollIntervalMs: 5000
+    idleThresholdMs: 60000
 
 store:
   type: sqlite
   path: ~/.holocron/holocron.db
+  retentionDays: 30
+
+view:
+  refreshMs: 1000
+  showIdle: true
+  groupBy: source
+
+# Label rules with glob matching
+labels:
+  rules:
+    - match:
+        source: openclaw
+        sessionKey: "agent:r2d2:*"
+      set:
+        agent: r2d2
+    - match:
+        source: claude-code
+        workspace: "*/Projects/holocron"
+      set:
+        project: holocron
 ```
 
 ## Roadmap
 
-- [x] Phase 1: Core + Claude Code Provider + TUI + CLI Status + E2E Wiring
-- [ ] Phase 2: OpenClaw Provider
-- [ ] Phase 3: Labels & Linking
-- [ ] Phase 4: Daemon + Web UI
+- [x] Phase 1: Core Types + EventBus + SQLite Store (F1)
+- [x] Phase 1: Config Loading (F2)
+- [x] Phase 1: Claude Code Provider (F3)
+- [x] Phase 1: TUI Session List (F4)
+- [x] Phase 1: CLI Status Command (F5)
+- [x] Phase 1: End-to-End Wiring (F6)
+- [x] Phase 2: Active-Only Quick Toggle (F7)
+- [x] Phase 2: OpenClaw Provider (F8)
+- [x] Phase 2: Session Detail View (F9)
+- [x] Phase 2: Labels & Grouping (F10)
+- [ ] Phase 3: Daemon + Web UI
+- [ ] Phase 3: Codex Provider
 
 ## Tech Stack
 
