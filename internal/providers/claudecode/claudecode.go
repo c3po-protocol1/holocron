@@ -128,6 +128,7 @@ func (p *Provider) emitSessionStart(s SessionFile) {
 		Timestamp: time.Now().UnixMilli(),
 		Event:     collector.EventSessionStart,
 		Status:    collector.StatusIdle,
+		Labels:    map[string]string{"channel": "local"},
 	})
 }
 

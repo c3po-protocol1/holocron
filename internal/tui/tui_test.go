@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/c3po-protocol1/holocron/internal/collector"
+	"github.com/c3po-protocol1/holocron/internal/config"
+	"github.com/c3po-protocol1/holocron/internal/labels"
 )
 
 // --- FormatElapsed tests ---
@@ -958,4 +960,158 @@ func TestModel_FullEventFlow(t *testing.T) {
 	view := result.View()
 	assert.True(t, strings.Contains(view, "claude-code"))
 	assert.True(t, strings.Contains(view, "1 active"))
+}
+
+// --- Group mode tests (F10) ---
+
+func TestModel_GroupMode_DefaultNone(t *testing.T) {
+	m := New(nil, nil)
+	assert.Equal(t, labels.GroupNone, m.groupMode)
+}
+
+func TestModel_GroupMode_CycleWithGKey(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusThinking, Labels: map[string]string{"agent": "r2d2"}},
+	}
+	m := New(nil, sessions)
+
+	var model tea.Model = m
+
+	// Press 'g' → agent
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, labels.GroupByAgent, model.(Model).groupMode)
+
+	// Press 'g' → channel
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, labels.GroupByChannel, model.(Model).groupMode)
+
+	// Press 'g' → none
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, labels.GroupNone, model.(Model).groupMode)
+}
+
+func TestModel_GroupMode_CursorResetOnCycle(t *testing.T) {
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "test", Status: collector.StatusThinking, Labels: map[string]string{"agent": "r2d2"}},
+		{SessionID: "s2", Source: "test", Status: collector.StatusIdle, Labels: map[string]string{"agent": "yoda"}},
+	}
+	m := New(nil, sessions)
+	m.cursor = 1
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	// Cursor should be within bounds (may reset if groups reorder)
+	result := model.(Model)
+	assert.True(t, result.cursor >= 0 && result.cursor < 2)
+}
+
+func TestModel_GroupMode_FooterShowsMode(t *testing.T) {
+	m := New(nil, nil)
+	view := m.View()
+	assert.Contains(t, view, "[g]roup: none")
+
+	m.groupMode = labels.GroupByAgent
+	view = m.View()
+	assert.Contains(t, view, "[g]roup: agent")
+
+	m.groupMode = labels.GroupByChannel
+	view = m.View()
+	assert.Contains(t, view, "[g]roup: channel")
+}
+
+func TestModel_GroupMode_ViewRendersGroupHeaders(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "claude-code", Status: collector.StatusThinking, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "r2d2"}},
+		{SessionID: "s2", Source: "claude-code", Status: collector.StatusIdle, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "yoda"}},
+	}
+	m := New(nil, sessions)
+	m.groupMode = labels.GroupByAgent
+
+	view := m.View()
+	assert.Contains(t, view, "r2d2")
+	assert.Contains(t, view, "yoda")
+	assert.Contains(t, view, "───")
+}
+
+func TestModel_GroupMode_CursorAcrossGroups(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "claude-code", Status: collector.StatusThinking, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "r2d2"}},
+		{SessionID: "s2", Source: "claude-code", Status: collector.StatusIdle, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "yoda"}},
+	}
+	m := New(nil, sessions)
+	m.groupMode = labels.GroupByAgent
+
+	var model tea.Model = m
+
+	// Move cursor down from first group to second
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	assert.Equal(t, 1, model.(Model).cursor)
+
+	// Can't go past the end
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	assert.Equal(t, 1, model.(Model).cursor)
+}
+
+func TestModel_GroupMode_EnterOpensCorrectSession(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "claude-code", Status: collector.StatusThinking, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "r2d2"}},
+		{SessionID: "s2", Source: "claude-code", Status: collector.StatusIdle, StartedAt: now.UnixMilli(), Labels: map[string]string{"agent": "yoda"}},
+	}
+	m := NewWithStore(nil, sessions, &mockStore{})
+	m.groupMode = labels.GroupByAgent
+	m.cursor = 1 // second session (yoda)
+
+	var model tea.Model = m
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	result := model.(Model)
+	assert.Equal(t, ViewDetail, result.view)
+	require.NotNil(t, result.detail)
+	// The session at cursor 1 in grouped view
+	assert.Equal(t, "s2", result.detail.session.SessionID)
+}
+
+func TestModel_SetLabelRules(t *testing.T) {
+	m := New(nil, nil)
+	assert.Empty(t, m.labelRules)
+
+	rules := []config.LabelRule{
+		{Match: map[string]string{"source": "claude-code"}, Set: map[string]string{"agent": "test"}},
+	}
+	m.SetLabelRules(rules)
+	assert.Len(t, m.labelRules, 1)
+}
+
+func TestModel_GroupMode_LabelRulesApplied(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{SessionID: "s1", Source: "claude-code", Status: collector.StatusThinking, StartedAt: now.UnixMilli()},
+	}
+	m := New(nil, sessions)
+	m.labelRules = []config.LabelRule{
+		{Match: map[string]string{"source": "claude-code"}, Set: map[string]string{"agent": "r2d2"}},
+	}
+	m.groupMode = labels.GroupByAgent
+
+	view := m.View()
+	assert.Contains(t, view, "r2d2")
+}
+
+// --- Key binding tests (F10) ---
+
+func TestDefaultKeyMap_IncludesGroup(t *testing.T) {
+	km := DefaultKeyMap()
+	h := km.Group.Help()
+	assert.NotEmpty(t, h.Key)
+	assert.NotEmpty(t, h.Desc)
+	assert.Contains(t, h.Desc, "group")
+}
+
+func TestRenderHelp_ShowsGroupBinding(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderHelp(keys, 80)
+	assert.Contains(t, result, "cycle group mode")
 }

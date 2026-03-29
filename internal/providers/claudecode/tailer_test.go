@@ -80,10 +80,21 @@ func TestParseJSONLLine_FallbackSessionID(t *testing.T) {
 	assert.Equal(t, "fallback-id", event.SessionID)
 }
 
-func TestParseJSONLLine_NoLabelsWhenEmpty(t *testing.T) {
+func TestParseJSONLLine_ChannelLocalAlwaysSet(t *testing.T) {
 	line := []byte(`{"type":"assistant","message":{"role":"assistant","content":"ok"},"sessionId":"s1"}`)
 	event := ParseJSONLLine(line, "s1", "/ws")
 
 	require.NotNil(t, event)
-	assert.Nil(t, event.Labels, "labels should be nil when no metadata")
+	require.NotNil(t, event.Labels)
+	assert.Equal(t, "local", event.Labels["channel"], "claude-code events must have channel=local")
+}
+
+func TestParseJSONLLine_ChannelLocalWithMetadata(t *testing.T) {
+	line := []byte(`{"type":"user","message":{"role":"user","content":"hi"},"sessionId":"s1","version":"2.1","gitBranch":"main"}`)
+	event := ParseJSONLLine(line, "s1", "/ws")
+
+	require.NotNil(t, event)
+	assert.Equal(t, "local", event.Labels["channel"])
+	assert.Equal(t, "main", event.Labels["git_branch"])
+	assert.Equal(t, "2.1", event.Labels["claude_version"])
 }

@@ -80,16 +80,14 @@ func ParseJSONLLine(line []byte, sessionID, workspace string) *collector.Monitor
 	event.Timestamp = time.Now().UnixMilli()
 
 	// Extract labels from metadata
-	labels := make(map[string]string)
+	labels := map[string]string{"channel": "local"}
 	if entry.GitBranch != "" {
 		labels["git_branch"] = entry.GitBranch
 	}
 	if entry.Version != "" {
 		labels["claude_version"] = entry.Version
 	}
-	if len(labels) > 0 {
-		event.Labels = labels
-	}
+	event.Labels = labels
 
 	return event
 }
