@@ -23,24 +23,23 @@ Each spec is a self-contained, testable unit. Build and verify independently.
 | F4 | TUI Session List | [specs/F4-tui-session-list.md](./specs/F4-tui-session-list.md) | ✅ Done |
 | F5 | CLI Status Command | [specs/F5-cli-status.md](./specs/F5-cli-status.md) | ✅ Done |
 | F6 | End-to-End Wiring + README Fix | [specs/F6-wiring-and-readme.md](./specs/F6-wiring-and-readme.md) | ✅ Done |
-| F7 | Active-Only Quick Toggle | [specs/F7-active-toggle.md](./specs/F7-active-toggle.md) | Draft |
-| F8 | OpenClaw Provider | [specs/F8-openclaw-provider.md](./specs/F8-openclaw-provider.md) | Draft |
-| F9 | Session Detail View | [specs/F9-detail-view.md](./specs/F9-detail-view.md) | Draft |
+| F7 | Active-Only Quick Toggle | [specs/F7-active-toggle.md](./specs/F7-active-toggle.md) | ✅ Done |
+| F8 | OpenClaw Provider | [specs/F8-openclaw-provider.md](./specs/F8-openclaw-provider.md) | ✅ Done |
+| F9 | Session Detail View | [specs/F9-detail-view.md](./specs/F9-detail-view.md) | ✅ Done |
+| F10 | Labels & Grouping | [specs/F10-labels-and-grouping.md](./specs/F10-labels-and-grouping.md) | Draft |
 
 ### Future Features (not yet spec'd)
 
 | # | Feature | Depends On |
 |---|---------|------------|
-| F10 | Labels & Linking | F9 |
-
-| F11 | TUI Settings Panel | F9 |
-| F12 | Daemon Mode | F9 |
+| F11 | TUI Settings Panel | F10 |
+| F12 | Daemon Mode | F10 |
 | F13 | Web UI | F12 |
 
 ## Build Order
 
 ```
-F1 → F2 → F3 → F4 → F5 → F6 → F7 (active toggle) → F8 (openclaw) → F9 (detail view) → F10+
+F1 → F2 → F3 → F4 → F5 → F6 → F7 → F8 → F9 → F10 (labels) → F11+
 ```
 
 ## References
