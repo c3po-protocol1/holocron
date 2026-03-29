@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/c3po-protocol1/holocron/internal/collector"
+	"github.com/c3po-protocol1/holocron/internal/config"
+	"github.com/c3po-protocol1/holocron/internal/labels"
 )
 
 // ViewMode represents which view is currently active.
@@ -45,6 +47,8 @@ type Model struct {
 	keys       KeyMap
 	view       ViewMode
 	detail     *DetailModel
+	groupMode  labels.GroupMode
+	labelRules []config.LabelRule
 }
 
 // New creates a new TUI Model.
@@ -52,12 +56,13 @@ func New(events <-chan collector.MonitorEvent, sessions []collector.SessionState
 	s := make([]collector.SessionState, len(sessions))
 	copy(s, sessions)
 	return Model{
-		sessions: s,
-		events:   events,
-		keys:     DefaultKeyMap(),
-		width:    80,
-		height:   24,
-		view:     ViewList,
+		sessions:  s,
+		events:    events,
+		keys:      DefaultKeyMap(),
+		width:     80,
+		height:    24,
+		view:      ViewList,
+		groupMode: labels.GroupNone,
 	}
 }
 
@@ -66,6 +71,11 @@ func NewWithStore(events <-chan collector.MonitorEvent, sessions []collector.Ses
 	m := New(events, sessions)
 	m.store = store
 	return m
+}
+
+// SetLabelRules sets the label rules for the model.
+func (m *Model) SetLabelRules(rules []config.LabelRule) {
+	m.labelRules = rules
 }
 
 // Init implements tea.Model.
@@ -118,12 +128,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateList handles key events in the list view.
-func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// visibleSessions returns the filtered/grouped visible session list.
+func (m Model) visibleSessions() []collector.SessionState {
 	visible := m.sessions
 	if m.activeOnly {
 		visible = filterActive(m.sessions)
 	}
+	if m.groupMode != labels.GroupNone {
+		groups := m.buildGroups(visible)
+		return FlattenGroups(groups)
+	}
+	return visible
+}
+
+// buildGroups applies labels and groups the given sessions.
+func (m Model) buildGroups(sessions []collector.SessionState) []labels.SessionGroup {
+	// Apply label rules to copies
+	labeled := make([]collector.SessionState, len(sessions))
+	copy(labeled, sessions)
+	for i := range labeled {
+		labels.ApplyLabels(&labeled[i], m.labelRules)
+	}
+	return labels.GroupSessions(labeled, m.groupMode)
+}
+
+// updateList handles key events in the list view.
+func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	visible := m.visibleSessions()
 
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -138,12 +169,15 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
+	case key.Matches(msg, m.keys.Group):
+		m.groupMode = labels.CycleGroupMode(m.groupMode)
+		visible = m.visibleSessions()
+		if m.cursor >= len(visible) {
+			m.cursor = 0
+		}
 	case key.Matches(msg, m.keys.Active):
 		m.activeOnly = !m.activeOnly
-		visible = m.sessions
-		if m.activeOnly {
-			visible = filterActive(m.sessions)
-		}
+		visible = m.visibleSessions()
 		if m.cursor >= len(visible) {
 			m.cursor = 0
 		}
@@ -249,9 +283,12 @@ func (m Model) renderListView() string {
 		b.WriteString(dimStyle.Render(strings.Repeat("─", min(m.width, 60))))
 		b.WriteString("\n")
 
-		// Session list
+		// Session list — grouped or flat
 		if m.activeOnly && len(visible) == 0 && len(m.sessions) > 0 {
 			b.WriteString(dimStyle.Render("No active sessions. Press 'a' to show all."))
+		} else if m.groupMode != labels.GroupNone {
+			groups := m.buildGroups(visible)
+			b.WriteString(RenderGroupedList(groups, m.cursor, time.Now(), min(m.width, 60)))
 		} else {
 			b.WriteString(RenderSessionList(visible, m.cursor, time.Now()))
 		}
@@ -280,8 +317,10 @@ func (m Model) renderListView() string {
 		filterLabel = fmt.Sprintf("[a]ctive: on (%d hidden)", hiddenCount)
 	}
 
-	stats := footerStyle.Render(fmt.Sprintf("%d sessions │ %d active │ %d events │ %s",
-		len(m.sessions), activeCount, m.eventCount, filterLabel))
+	groupLabel := "[g]roup: " + string(m.groupMode)
+
+	stats := footerStyle.Render(fmt.Sprintf("%d sessions │ %d active │ %d events │ %s │ %s",
+		len(m.sessions), activeCount, m.eventCount, filterLabel, groupLabel))
 	b.WriteString(stats)
 
 	// Apply width constraint
@@ -326,6 +365,7 @@ func (m *Model) applyEvent(ev collector.MonitorEvent) {
 		StartedAt:   ev.Timestamp,
 		LastEventAt: ev.Timestamp,
 		EventCount:  1,
+		Labels:      ev.Labels,
 	}
 	if ev.Detail != nil {
 		newSession.CurrentTool = ev.Detail.Tool

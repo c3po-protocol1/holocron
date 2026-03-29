@@ -15,6 +15,7 @@ type KeyMap struct {
 	Top     key.Binding
 	Bottom  key.Binding
 	Follow  key.Binding
+	Group   key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -63,6 +64,10 @@ func DefaultKeyMap() KeyMap {
 		Follow: key.NewBinding(
 			key.WithKeys("f"),
 			key.WithHelp("f", "toggle follow"),
+		),
+		Group: key.NewBinding(
+			key.WithKeys("g"),
+			key.WithHelp("g", "cycle group mode"),
 		),
 	}
 }

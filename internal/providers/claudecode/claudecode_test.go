@@ -116,6 +116,34 @@ func TestProviderDetectsNewFile(t *testing.T) {
 	assert.True(t, found, "should detect new session file via fsnotify")
 }
 
+func TestProviderSessionStartHasChannelLocal(t *testing.T) {
+	baseDir := t.TempDir()
+	wsDir := filepath.Join(baseDir, "-Users-c-3po-Projects-test")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(wsDir, "sess-1.jsonl"),
+		[]byte(`{"type":"user","message":{"role":"user","content":"hi"},"sessionId":"sess-1"}`+"\n"),
+		0o644,
+	))
+
+	bus := &testBus{}
+	p := New(baseDir, 100*time.Millisecond)
+
+	ctx := context.Background()
+	require.NoError(t, p.Start(ctx, bus))
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, p.Stop())
+
+	events := bus.Events()
+	require.NotEmpty(t, events)
+
+	// session.start event must have channel=local
+	startEvent := events[0]
+	assert.Equal(t, collector.EventSessionStart, startEvent.Event)
+	require.NotNil(t, startEvent.Labels)
+	assert.Equal(t, "local", startEvent.Labels["channel"], "session.start must have channel=local")
+}
+
 func TestProviderAllEventsHaveSource(t *testing.T) {
 	baseDir := t.TempDir()
 	wsDir := filepath.Join(baseDir, "-test")

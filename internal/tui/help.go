@@ -31,6 +31,7 @@ func listBindings(keys KeyMap) []helpBinding {
 		{"?", "Toggle help"},
 		{"r", "Force refresh"},
 		{"a", "toggle active-only filter"},
+		{"g", "cycle group mode (none/agent/channel)"},
 	}
 }
 

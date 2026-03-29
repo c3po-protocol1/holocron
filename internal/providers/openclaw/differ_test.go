@@ -21,6 +21,8 @@ func TestDiffer_NewSession(t *testing.T) {
 	assert.Equal(t, "openclaw", events[0].Source)
 	assert.Equal(t, "sess-1", events[0].SessionID)
 	assert.Equal(t, "r2d2", events[0].Labels["agent"])
+	assert.Equal(t, "discord", events[0].Labels["channel"])
+	assert.Equal(t, "direct", events[0].Labels["session_type"])
 }
 
 func TestDiffer_SessionDisappears(t *testing.T) {

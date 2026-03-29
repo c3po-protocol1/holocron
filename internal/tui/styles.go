@@ -61,4 +61,7 @@ var (
 
 	helpDescStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CCCCCC"))
+
+	groupHeaderStyle = lipgloss.NewStyle().
+				Foreground(colorDim)
 )

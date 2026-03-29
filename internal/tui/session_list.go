@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/c3po-protocol1/holocron/internal/collector"
+	"github.com/c3po-protocol1/holocron/internal/labels"
 )
 
 // FormatElapsed formats a duration into a human-readable string.
@@ -241,4 +242,62 @@ func RenderSessionList(sessions []collector.SessionState, cursor int, now time.T
 		rows = append(rows, RenderSessionRow(s, i == cursor, now))
 	}
 	return strings.Join(rows, "\n\n")
+}
+
+// RenderGroupedList renders session groups with headers and indented sessions.
+func RenderGroupedList(groups []labels.SessionGroup, cursor int, now time.Time, width int) string {
+	flat := FlattenGroups(groups)
+	if len(flat) == 0 {
+		return RenderEmptyState()
+	}
+
+	var b strings.Builder
+	sessionIdx := 0
+	for gi, g := range groups {
+		if gi > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(renderGroupHeader(g, width))
+		b.WriteString("\n")
+		for si, s := range g.Sessions {
+			if si > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString(RenderSessionRow(s, sessionIdx == cursor, now))
+			sessionIdx++
+		}
+	}
+
+	return b.String()
+}
+
+// renderGroupHeader renders a group header line like: ─── r2d2 (2 sessions, 1 active) ──────
+func renderGroupHeader(g labels.SessionGroup, width int) string {
+	countStr := fmt.Sprintf("%d session", len(g.Sessions))
+	if len(g.Sessions) != 1 {
+		countStr += "s"
+	}
+	if g.Active > 0 {
+		countStr += fmt.Sprintf(", %d active", g.Active)
+	}
+
+	label := fmt.Sprintf("─── %s (%s) ", g.Label, countStr)
+
+	// Fill remaining width with ─
+	remaining := width - len(label)
+	if remaining < 3 {
+		remaining = 3
+	}
+	line := label + strings.Repeat("─", remaining)
+
+	return groupHeaderStyle.Render(line)
+}
+
+// FlattenGroups returns all sessions across groups as a flat slice, preserving group order.
+func FlattenGroups(groups []labels.SessionGroup) []collector.SessionState {
+	var out []collector.SessionState
+	for _, g := range groups {
+		out = append(out, g.Sessions...)
+	}
+	return out
 }
