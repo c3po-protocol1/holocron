@@ -17,3 +17,6 @@
 - [F5 Dev Plan](docs/plans/F5-plan.md)
 - [F7 Spec](docs/specs/F7-active-toggle.md)
 - [F7 Dev Plan](docs/plans/F7-plan.md)
+- [F10 Spec](docs/specs/F10-labels-and-grouping.md)
+- [F10 Dev Plan](docs/plans/F10-plan.md)
+- [F10 Tasks](docs/plans/F10-tasks.md)
