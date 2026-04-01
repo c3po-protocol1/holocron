@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/c3po-protocol1/holocron/internal/collector"
@@ -210,7 +211,7 @@ func extractToolResultContent(raw json.RawMessage) string {
 					if sb.Len() > 0 {
 						sb.WriteString("\n")
 					}
-					sb.WriteString("[binary content, " + itoa(len(b.Content)) + " bytes]")
+					sb.WriteString("[binary content, " + strconv.Itoa(len(b.Content)) + " bytes]")
 				}
 			}
 		}
@@ -263,25 +264,3 @@ func extractAssistantTokenUsage(raw json.RawMessage) *collector.TokenUsage {
 	return extractTokenUsage(msg.Usage)
 }
 
-// itoa converts an int to its decimal string representation.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	pos := len(buf)
-	for n > 0 {
-		pos--
-		buf[pos] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		pos--
-		buf[pos] = '-'
-	}
-	return string(buf[pos:])
-}
