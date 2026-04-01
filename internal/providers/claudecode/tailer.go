@@ -47,27 +47,59 @@ func ParseJSONLLine(line []byte, sessionID, workspace string) *collector.Monitor
 
 	switch entry.Type {
 	case "user":
+		content := extractUserContent(entry.Message)
+		if content == "" {
+			return nil
+		}
 		event = &collector.MonitorEvent{
-			Event:  collector.EventMessage,
+			Event:  collector.EventUserMessage,
 			Status: collector.StatusThinking,
+			Detail: &collector.EventDetail{
+				Content: truncateContent(content, maxContentSize),
+				Message: truncateContent(content, maxMessageSize),
+				Role:    "user",
+			},
 		}
 	case "assistant":
+		content := extractAssistantContent(entry.Message)
+		detail := &collector.EventDetail{
+			Role: "assistant",
+		}
+		if content != "" {
+			detail.Content = truncateContent(content, maxContentSize)
+			detail.Message = truncateContent(content, maxMessageSize)
+		}
+		detail.TokenUsage = extractAssistantTokenUsage(entry.Message)
 		event = &collector.MonitorEvent{
-			Event:  collector.EventMessage,
+			Event:  collector.EventAssistantMessage,
 			Status: collector.StatusIdle,
+			Detail: detail,
 		}
 	case "tool_use":
+		toolInput := extractToolInput(entry.Input)
+		target := extractToolTarget(entry.Name, entry.Input)
 		event = &collector.MonitorEvent{
 			Event:  collector.EventToolStart,
 			Status: collector.StatusToolRunning,
 			Detail: &collector.EventDetail{
-				Tool: entry.Name,
+				Tool:      entry.Name,
+				Target:    target,
+				ToolInput: truncateContent(toolInput, maxContentSize),
 			},
 		}
 	case "tool_result":
+		output := extractToolResultContent(entry.Content)
+		detail := &collector.EventDetail{
+			Role: "tool",
+		}
+		if output != "" {
+			detail.ToolOutput = truncateContent(output, maxContentSize)
+			detail.Message = truncateContent(output, maxMessageSize)
+		}
 		event = &collector.MonitorEvent{
-			Event:  collector.EventToolEnd,
+			Event:  collector.EventToolResult,
 			Status: collector.StatusThinking,
+			Detail: detail,
 		}
 	default:
 		return nil

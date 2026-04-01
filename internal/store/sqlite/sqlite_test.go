@@ -215,6 +215,163 @@ func TestNewCreatesParentDirectories(t *testing.T) {
 	assert.NoError(t, err, "database file should exist")
 }
 
+// --- F11: Rich Event Data Tests ---
+
+func TestSaveAndGetWithRichContentFields(t *testing.T) {
+	s := tempDB(t)
+	now := time.Now().UnixMilli()
+
+	ev := makeEvent("e1", "claude-code", "s1", now, collector.EventUserMessage, collector.StatusThinking)
+	ev.Detail = &collector.EventDetail{
+		Tool:       "Read",
+		Target:     "main.go",
+		Message:    "reading file",
+		Content:    "full content of the user message",
+		ToolInput:  `{"file_path": "main.go"}`,
+		ToolOutput: "package main\n\nfunc main() {}",
+		Role:       "user",
+	}
+	require.NoError(t, s.Save(ev))
+
+	events, err := s.GetEvents("claude-code", "s1", 0, 100)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	got := events[0]
+	require.NotNil(t, got.Detail)
+	assert.Equal(t, "full content of the user message", got.Detail.Content)
+	assert.Equal(t, `{"file_path": "main.go"}`, got.Detail.ToolInput)
+	assert.Equal(t, "package main\n\nfunc main() {}", got.Detail.ToolOutput)
+	assert.Equal(t, "user", got.Detail.Role)
+	// Existing fields should also be preserved
+	assert.Equal(t, "Read", got.Detail.Tool)
+	assert.Equal(t, "main.go", got.Detail.Target)
+	assert.Equal(t, "reading file", got.Detail.Message)
+}
+
+func TestSaveAndGetWithEmptyRichFields(t *testing.T) {
+	s := tempDB(t)
+	now := time.Now().UnixMilli()
+
+	ev := makeEvent("e1", "claude-code", "s1", now, collector.EventToolStart, collector.StatusToolRunning)
+	ev.Detail = &collector.EventDetail{
+		Tool:   "Bash",
+		Target: "go test ./...",
+	}
+	require.NoError(t, s.Save(ev))
+
+	events, err := s.GetEvents("claude-code", "s1", 0, 100)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	got := events[0]
+	require.NotNil(t, got.Detail)
+	assert.Equal(t, "Bash", got.Detail.Tool)
+	assert.Equal(t, "", got.Detail.Content)
+	assert.Equal(t, "", got.Detail.ToolOutput)
+	assert.Equal(t, "", got.Detail.Role)
+}
+
+func TestTrimOldContent(t *testing.T) {
+	s := tempDB(t)
+
+	oldTs := int64(1000)
+	newTs := int64(5000)
+
+	// Save an old event with rich content
+	oldEv := makeEvent("e-old", "claude-code", "s1", oldTs, collector.EventUserMessage, collector.StatusThinking)
+	oldEv.Detail = &collector.EventDetail{
+		Message:    "old message",
+		Content:    "old full content",
+		ToolInput:  "old tool input",
+		ToolOutput: "old tool output",
+		Role:       "user",
+	}
+	require.NoError(t, s.Save(oldEv))
+
+	// Save a new event with rich content
+	newEv := makeEvent("e-new", "claude-code", "s1", newTs, collector.EventAssistantMessage, collector.StatusIdle)
+	newEv.Detail = &collector.EventDetail{
+		Message:    "new message",
+		Content:    "new full content",
+		ToolInput:  "new tool input",
+		ToolOutput: "new tool output",
+		Role:       "assistant",
+	}
+	require.NoError(t, s.Save(newEv))
+
+	// Trim content older than 3000ms
+	require.NoError(t, s.TrimOldContent(3000))
+
+	events, err := s.GetEvents("claude-code", "s1", 0, 100)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	// Old event: content fields cleared, metadata preserved
+	old := events[0]
+	assert.Equal(t, "e-old", old.ID)
+	assert.Equal(t, collector.EventUserMessage, old.Event)
+	require.NotNil(t, old.Detail)
+	assert.Equal(t, "old message", old.Detail.Message) // Message is in detail_json, preserved
+	assert.Equal(t, "", old.Detail.Content)             // Cleared
+	assert.Equal(t, "", old.Detail.ToolInput)           // Cleared
+	assert.Equal(t, "", old.Detail.ToolOutput)          // Cleared
+	assert.Equal(t, "user", old.Detail.Role)            // Role preserved (not trimmed)
+
+	// New event: all fields intact
+	new := events[1]
+	assert.Equal(t, "e-new", new.ID)
+	require.NotNil(t, new.Detail)
+	assert.Equal(t, "new full content", new.Detail.Content)
+	assert.Equal(t, "new tool input", new.Detail.ToolInput)
+	assert.Equal(t, "new tool output", new.Detail.ToolOutput)
+	assert.Equal(t, "assistant", new.Detail.Role)
+}
+
+func TestTrimOldContentNoOp(t *testing.T) {
+	s := tempDB(t)
+	// Trimming on an empty DB should not error
+	require.NoError(t, s.TrimOldContent(1000))
+}
+
+func TestMigrationOnFreshDB(t *testing.T) {
+	// tempDB already runs migrations on a fresh DB
+	s := tempDB(t)
+
+	// Verify new columns exist by saving an event with rich fields
+	ev := makeEvent("e1", "test", "s1", 1000, collector.EventUserMessage, collector.StatusThinking)
+	ev.Detail = &collector.EventDetail{
+		Content: "test content",
+		Role:    "user",
+	}
+	require.NoError(t, s.Save(ev))
+
+	events, err := s.GetEvents("test", "s1", 0, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, "test content", events[0].Detail.Content)
+}
+
+func TestMigrationIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// First open creates schema + runs migrations
+	s1, err := New(dbPath)
+	require.NoError(t, err)
+	s1.Close()
+
+	// Second open re-runs migrations (should not error on duplicate columns)
+	s2, err := New(dbPath)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	// Verify it still works
+	ev := makeEvent("e1", "test", "s1", 1000, collector.EventToolResult, collector.StatusThinking)
+	ev.Detail = &collector.EventDetail{ToolOutput: "result", Role: "tool"}
+	require.NoError(t, s2.Save(ev))
+}
+
 func TestNewCreatesDirectoryWith0700Permissions(t *testing.T) {
 	dir := t.TempDir()
 	subDir := filepath.Join(dir, "secure-dir")

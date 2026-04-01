@@ -8,5 +8,6 @@ type Store interface {
 	ListSessions() ([]collector.SessionState, error)
 	GetSession(source, sessionID string) (*collector.SessionState, error)
 	GetEvents(source, sessionID string, since int64, limit int) ([]collector.MonitorEvent, error)
+	TrimOldContent(olderThanMs int64) error
 	Close() error
 }

@@ -4,13 +4,16 @@ package collector
 type EventType string
 
 const (
-	EventSessionStart EventType = "session.start"
-	EventSessionEnd   EventType = "session.end"
-	EventStatusChange EventType = "status.change"
-	EventToolStart    EventType = "tool.start"
-	EventToolEnd      EventType = "tool.end"
-	EventMessage      EventType = "message"
-	EventError        EventType = "error"
+	EventSessionStart    EventType = "session.start"
+	EventSessionEnd      EventType = "session.end"
+	EventStatusChange    EventType = "status.change"
+	EventToolStart       EventType = "tool.start"
+	EventToolEnd         EventType = "tool.end"
+	EventMessage         EventType = "message"
+	EventError           EventType = "error"
+	EventUserMessage     EventType = "user.message"
+	EventAssistantMessage EventType = "assistant.message"
+	EventToolResult      EventType = "tool.result"
 )
 
 // SessionStatus represents the current state of a session.
@@ -39,6 +42,12 @@ type EventDetail struct {
 	Message    string      `json:"message,omitempty"`
 	ElapsedMs  int64       `json:"elapsedMs,omitempty"`
 	TokenUsage *TokenUsage `json:"tokenUsage,omitempty"`
+
+	// Rich content fields (F11). Stored in separate DB columns, not detail_json.
+	Content    string `json:"content,omitempty"`
+	ToolInput  string `json:"toolInput,omitempty"`
+	ToolOutput string `json:"toolOutput,omitempty"`
+	Role       string `json:"role,omitempty"`
 }
 
 // MonitorEvent is the unified event schema emitted by all providers.

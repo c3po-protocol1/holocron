@@ -1,6 +1,9 @@
 package sqlite
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
 
 const schema = `
 CREATE TABLE IF NOT EXISTS events (
@@ -32,7 +35,25 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `
 
+// migrations is an ordered list of ALTER TABLE statements applied after schema creation.
+// Each is idempotent — duplicate column errors are ignored.
+var migrations = []string{
+	`ALTER TABLE events ADD COLUMN content TEXT DEFAULT ''`,
+	`ALTER TABLE events ADD COLUMN tool_input TEXT DEFAULT ''`,
+	`ALTER TABLE events ADD COLUMN tool_output TEXT DEFAULT ''`,
+	`ALTER TABLE events ADD COLUMN role TEXT DEFAULT ''`,
+}
+
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	for _, m := range migrations {
+		if _, err := db.Exec(m); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return err
+			}
+		}
+	}
+	return nil
 }
