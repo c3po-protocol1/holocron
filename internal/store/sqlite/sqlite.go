@@ -58,13 +58,22 @@ func (s *SQLiteStore) Save(event collector.MonitorEvent) error {
 	}
 	defer tx.Rollback()
 
+	// Extract rich content fields from detail
+	var content, toolInput, toolOutput, role string
+	if event.Detail != nil {
+		content = event.Detail.Content
+		toolInput = event.Detail.ToolInput
+		toolOutput = event.Detail.ToolOutput
+		role = event.Detail.Role
+	}
+
 	// Insert event
 	_, err = tx.Exec(`
-		INSERT OR IGNORE INTO events (id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT OR IGNORE INTO events (id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json, content, tool_input, tool_output, role)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID, event.Source, event.SessionID, event.Workspace,
 		event.Timestamp, string(event.Event), string(event.Status),
-		detailJSON, labelsJSON,
+		detailJSON, labelsJSON, content, toolInput, toolOutput, role,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting event: %w", err)
@@ -143,7 +152,7 @@ func (s *SQLiteStore) GetSession(source, sessionID string) (*collector.SessionSt
 func (s *SQLiteStore) GetEvents(source, sessionID string, since int64, limit int) ([]collector.MonitorEvent, error) {
 	rows, err := s.db.Query(`
 		SELECT * FROM (
-			SELECT id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json
+			SELECT id, source, session_id, workspace, timestamp, event, status, detail_json, labels_json, content, tool_input, tool_output, role
 			FROM events
 			WHERE source = ? AND session_id = ? AND timestamp >= ?
 			ORDER BY timestamp DESC
@@ -164,6 +173,17 @@ func (s *SQLiteStore) GetEvents(source, sessionID string, since int64, limit int
 		events = append(events, ev)
 	}
 	return events, rows.Err()
+}
+
+// TrimOldContent clears content, tool_input, and tool_output fields for events
+// older than olderThanMs (Unix milliseconds). Metadata (id, type, role, etc.) is preserved.
+func (s *SQLiteStore) TrimOldContent(olderThanMs int64) error {
+	_, err := s.db.Exec(`
+		UPDATE events SET content = '', tool_input = '', tool_output = ''
+		WHERE timestamp < ? AND (content != '' OR tool_input != '' OR tool_output != '')`,
+		olderThanMs,
+	)
+	return err
 }
 
 func (s *SQLiteStore) Close() error {
@@ -243,11 +263,13 @@ func scanEvent(s scanner) (collector.MonitorEvent, error) {
 	var ev collector.MonitorEvent
 	var workspace sql.NullString
 	var detailJSON, labelsJSON sql.NullString
+	var content, toolInput, toolOutput, role string
 
 	err := s.Scan(
 		&ev.ID, &ev.Source, &ev.SessionID, &workspace,
 		&ev.Timestamp, &ev.Event, &ev.Status,
 		&detailJSON, &labelsJSON,
+		&content, &toolInput, &toolOutput, &role,
 	)
 	if err != nil {
 		return ev, err
@@ -261,6 +283,16 @@ func scanEvent(s scanner) (collector.MonitorEvent, error) {
 		} else {
 			ev.Detail = &d
 		}
+	}
+	// Overlay rich content fields from dedicated columns onto Detail.
+	if content != "" || toolInput != "" || toolOutput != "" || role != "" {
+		if ev.Detail == nil {
+			ev.Detail = &collector.EventDetail{}
+		}
+		ev.Detail.Content = content
+		ev.Detail.ToolInput = toolInput
+		ev.Detail.ToolOutput = toolOutput
+		ev.Detail.Role = role
 	}
 	if labelsJSON.Valid {
 		if err := json.Unmarshal([]byte(labelsJSON.String), &ev.Labels); err != nil {

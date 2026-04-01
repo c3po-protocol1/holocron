@@ -52,6 +52,10 @@ func (s *fakeStore) GetEvents(source, sessionID string, since int64, limit int) 
 	return nil, nil
 }
 
+func (s *fakeStore) TrimOldContent(olderThanMs int64) error {
+	return nil
+}
+
 func (s *fakeStore) Close() error {
 	return nil
 }
