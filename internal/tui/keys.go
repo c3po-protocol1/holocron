@@ -15,6 +15,7 @@ type KeyMap struct {
 	Top     key.Binding
 	Bottom  key.Binding
 	Follow  key.Binding
+	Verbose key.Binding
 	Group   key.Binding
 }
 
@@ -64,6 +65,10 @@ func DefaultKeyMap() KeyMap {
 		Follow: key.NewBinding(
 			key.WithKeys("f"),
 			key.WithHelp("f", "toggle follow"),
+		),
+		Verbose: key.NewBinding(
+			key.WithKeys("v"),
+			key.WithHelp("v", "toggle verbose"),
 		),
 		Group: key.NewBinding(
 			key.WithKeys("g"),

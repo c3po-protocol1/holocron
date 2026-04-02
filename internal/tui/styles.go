@@ -15,6 +15,7 @@ var (
 	colorGreen  = lipgloss.Color("#00FF00")
 	colorRed    = lipgloss.Color("#FF0000")
 	colorBlue   = lipgloss.Color("#5F87FF")
+	colorCyan   = lipgloss.Color("#00FFFF")
 	colorDim    = lipgloss.Color("#666666")
 	colorWhite  = lipgloss.Color("#FFFFFF")
 	colorYellow = lipgloss.Color("#FFFF00")
@@ -63,5 +64,22 @@ var (
 			Foreground(lipgloss.Color("#CCCCCC"))
 
 	groupHeaderStyle = lipgloss.NewStyle().
+				Foreground(colorDim)
+
+	// Role-based styles for F12 verbose event log.
+	userStyle = lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Bold(true)
+
+	assistantStyle = lipgloss.NewStyle().
+				Foreground(colorCyan)
+
+	toolStyle = lipgloss.NewStyle().
+			Foreground(colorYellow)
+
+	toolResultStyle = lipgloss.NewStyle().
+				Foreground(colorGreen)
+
+	verboseSepStyle = lipgloss.NewStyle().
 				Foreground(colorDim)
 )

@@ -208,6 +208,8 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detail.ScrollToBottom()
 	case key.Matches(msg, m.keys.Follow):
 		m.detail.ToggleFollow()
+	case key.Matches(msg, m.keys.Verbose):
+		m.detail.ToggleVerbose()
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
 	}
