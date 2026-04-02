@@ -1115,3 +1115,64 @@ func TestRenderHelp_ShowsGroupBinding(t *testing.T) {
 	result := RenderHelp(keys, 80)
 	assert.Contains(t, result, "cycle group mode")
 }
+
+// --- F12 Verbose key integration tests ---
+
+func TestDefaultKeyMap_IncludesVerbose(t *testing.T) {
+	km := DefaultKeyMap()
+	h := km.Verbose.Help()
+	assert.NotEmpty(t, h.Key)
+	assert.Contains(t, h.Desc, "verbose")
+}
+
+func TestModel_VerboseKeyToggle(t *testing.T) {
+	now := time.Now()
+	sessions := []collector.SessionState{
+		{
+			Source:    "claude-code",
+			SessionID: "s1",
+			Status:    collector.StatusThinking,
+			StartedAt: now.UnixMilli(),
+		},
+	}
+
+	store := &mockStore{
+		events: []collector.MonitorEvent{
+			{
+				Source:    "claude-code",
+				SessionID: "s1",
+				Timestamp: now.UnixMilli(),
+				Event:     collector.EventUserMessage,
+				Detail:    &collector.EventDetail{Content: "Hello"},
+			},
+		},
+	}
+
+	m := NewWithStore(nil, sessions, store)
+	m.width = 80
+	m.height = 40
+
+	// Open detail view
+	m.view = ViewList
+	m.cursor = 0
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = result.(Model)
+	require.Equal(t, ViewDetail, m.view)
+	require.NotNil(t, m.detail)
+
+	// Press 'v' to toggle verbose
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	m = result.(Model)
+	assert.True(t, m.detail.IsVerbose())
+
+	// Press 'v' again to toggle back
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	m = result.(Model)
+	assert.False(t, m.detail.IsVerbose())
+}
+
+func TestRenderDetailHelp_ShowsVerbose(t *testing.T) {
+	keys := DefaultKeyMap()
+	result := RenderDetailHelp(keys, 80)
+	assert.Contains(t, result, "verbose")
+}
