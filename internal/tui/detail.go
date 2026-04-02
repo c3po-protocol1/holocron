@@ -13,14 +13,22 @@ import (
 // InfoPanelHeight is the fixed height of the info panel (lines including border).
 const InfoPanelHeight = 13
 
+// renderedLine represents a single display line in verbose mode.
+type renderedLine struct {
+	eventIndex int
+	text       string
+}
+
 // DetailModel is the Bubbletea sub-model for the session detail view.
 type DetailModel struct {
-	session collector.SessionState
-	events  []collector.MonitorEvent
-	follow  bool
-	scroll  int // scroll offset into event log (0 = top)
-	width   int
-	height  int
+	session       collector.SessionState
+	events        []collector.MonitorEvent
+	follow        bool
+	scroll        int // scroll offset into event log (0 = top)
+	width         int
+	height        int
+	verbose       bool
+	renderedLines []renderedLine // flattened rendered output for verbose mode
 }
 
 // NewDetailModel creates a new detail model with preloaded events.
@@ -69,6 +77,9 @@ func (dm *DetailModel) AppendEvent(ev collector.MonitorEvent) {
 		dm.session.CurrentTool = ""
 		dm.session.CurrentTarget = ""
 	}
+	if dm.verbose {
+		dm.rebuildRenderedLines()
+	}
 	if dm.follow {
 		dm.scrollToBottom()
 	}
@@ -83,6 +94,13 @@ func (dm *DetailModel) UpdateSession(s collector.SessionState) {
 func (dm *DetailModel) SetSize(width, height int) {
 	dm.width = width
 	dm.height = height
+	// Auto-fallback: if width < 60, force compact
+	if dm.verbose && dm.width < 60 {
+		dm.verbose = false
+	}
+	if dm.verbose {
+		dm.rebuildRenderedLines()
+	}
 }
 
 // ScrollUp moves the event log scroll up by one line.
@@ -116,6 +134,42 @@ func (dm *DetailModel) ScrollToBottom() {
 	dm.follow = true
 }
 
+// ToggleVerbose toggles verbose mode. Auto-fallback to compact if width < 60.
+func (dm *DetailModel) ToggleVerbose() {
+	dm.verbose = !dm.verbose
+	if dm.verbose && dm.width < 60 {
+		dm.verbose = false
+	}
+	if dm.verbose {
+		dm.rebuildRenderedLines()
+	}
+	// Reset scroll to bottom when toggling
+	dm.scrollToBottom()
+	dm.follow = true
+}
+
+// IsVerbose returns whether verbose mode is active.
+func (dm *DetailModel) IsVerbose() bool {
+	return dm.verbose
+}
+
+// rebuildRenderedLines flattens events into a flat list of display lines for verbose mode.
+func (dm *DetailModel) rebuildRenderedLines() {
+	dm.renderedLines = nil
+	w := min(dm.width, 80) // cap verbose width
+	for i, ev := range dm.events {
+		block := formatEventVerbose(ev, w)
+		lines := strings.Split(block, "\n")
+		for _, line := range lines {
+			dm.renderedLines = append(dm.renderedLines, renderedLine{eventIndex: i, text: line})
+		}
+		// Add blank line between events
+		if i < len(dm.events)-1 {
+			dm.renderedLines = append(dm.renderedLines, renderedLine{eventIndex: i, text: ""})
+		}
+	}
+}
+
 // ToggleFollow toggles follow mode.
 func (dm *DetailModel) ToggleFollow() {
 	dm.follow = !dm.follow
@@ -135,7 +189,12 @@ func (dm *DetailModel) scrollToBottom() {
 
 func (dm *DetailModel) maxScroll() int {
 	visibleLines := dm.eventLogHeight()
-	total := len(dm.events)
+	var total int
+	if dm.verbose {
+		total = len(dm.renderedLines)
+	} else {
+		total = len(dm.events)
+	}
 	if total <= visibleLines {
 		return 0
 	}
@@ -173,22 +232,10 @@ func (dm *DetailModel) View() string {
 
 	if len(dm.events) == 0 {
 		b.WriteString(dimStyle.Render("  No events recorded for this session yet."))
+	} else if dm.verbose {
+		dm.renderVerboseLog(&b)
 	} else {
-		visibleLines := dm.eventLogHeight()
-		start := dm.scroll
-		end := start + visibleLines
-		if end > len(dm.events) {
-			end = len(dm.events)
-		}
-		if start > len(dm.events) {
-			start = len(dm.events)
-		}
-		for i := start; i < end; i++ {
-			b.WriteString(FormatEventRow(dm.events[i]))
-			if i < end-1 {
-				b.WriteString("\n")
-			}
-		}
+		dm.renderCompactLog(&b)
 	}
 
 	b.WriteString("\n\n")
@@ -202,11 +249,53 @@ func (dm *DetailModel) View() string {
 	if dm.follow {
 		followLabel = "on"
 	}
+	verboseLabel := "off"
+	if dm.verbose {
+		verboseLabel = "on"
+	}
 
-	footerKeys := footerStyle.Render(fmt.Sprintf("[Esc]back  [↑↓]scroll  [G]bottom  [g]top  [f]ollow: %s", followLabel))
+	footerKeys := footerStyle.Render(fmt.Sprintf("[Esc]back  [↑↓]scroll  [G]bottom  [g]top  [f]ollow: %s  [v]erbose: %s", followLabel, verboseLabel))
 	b.WriteString(footerKeys)
 
 	return lipgloss.NewStyle().MaxWidth(dm.width).Render(b.String())
+}
+
+// renderCompactLog renders event log in compact mode (one line per event, emoji icons).
+func (dm *DetailModel) renderCompactLog(b *strings.Builder) {
+	visibleLines := dm.eventLogHeight()
+	start := dm.scroll
+	end := start + visibleLines
+	if end > len(dm.events) {
+		end = len(dm.events)
+	}
+	if start > len(dm.events) {
+		start = len(dm.events)
+	}
+	for i := start; i < end; i++ {
+		b.WriteString(formatEventCompact(dm.events[i]))
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
+}
+
+// renderVerboseLog renders event log in verbose mode (line-based scrolling).
+func (dm *DetailModel) renderVerboseLog(b *strings.Builder) {
+	visibleLines := dm.eventLogHeight()
+	start := dm.scroll
+	end := start + visibleLines
+	if end > len(dm.renderedLines) {
+		end = len(dm.renderedLines)
+	}
+	if start > len(dm.renderedLines) {
+		start = len(dm.renderedLines)
+	}
+	for i := start; i < end; i++ {
+		b.WriteString(dm.renderedLines[i].text)
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
 }
 
 // --- Info Panel ---

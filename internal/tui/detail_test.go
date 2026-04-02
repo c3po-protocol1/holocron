@@ -414,6 +414,179 @@ func TestDetailModel_ResizeAdjustsEventLog(t *testing.T) {
 	assert.Contains(t, view, "Event Log")
 }
 
+// --- Verbose mode tests (T4+T5) ---
+
+func TestDetailModel_ToggleVerbose(t *testing.T) {
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	dm := NewDetailModel(session, nil, 80, 24)
+	assert.False(t, dm.IsVerbose())
+
+	dm.ToggleVerbose()
+	assert.True(t, dm.IsVerbose())
+
+	dm.ToggleVerbose()
+	assert.False(t, dm.IsVerbose())
+}
+
+func TestDetailModel_ToggleVerbose_AutoFallbackNarrow(t *testing.T) {
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	dm := NewDetailModel(session, nil, 50, 24) // width < 60
+
+	dm.ToggleVerbose()
+	assert.False(t, dm.IsVerbose(), "verbose should auto-fallback to compact when width < 60")
+}
+
+func TestDetailModel_VerboseAutoFallback_OnResize(t *testing.T) {
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	dm := NewDetailModel(session, nil, 80, 24)
+
+	dm.ToggleVerbose()
+	assert.True(t, dm.IsVerbose())
+
+	// Resize to narrow
+	dm.SetSize(50, 24)
+	assert.False(t, dm.IsVerbose(), "verbose should auto-fallback when resized below 60")
+}
+
+func TestDetailModel_RebuildRenderedLines(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventUserMessage,
+			Detail:    &collector.EventDetail{Content: "Hello"},
+		},
+		{
+			Timestamp: now.Add(time.Second).UnixMilli(),
+			Event:     collector.EventAssistantMessage,
+			Detail:    &collector.EventDetail{Content: "Hi there"},
+		},
+	}
+
+	dm := NewDetailModel(session, events, 80, 40)
+	dm.ToggleVerbose()
+	assert.True(t, dm.IsVerbose())
+	assert.Greater(t, len(dm.renderedLines), 0, "renderedLines should be populated")
+
+	// Each event should produce at least 1 line (header + content)
+	// Plus a blank separator between events
+	assert.GreaterOrEqual(t, len(dm.renderedLines), 4)
+}
+
+func TestDetailModel_VerboseView_ContainsContent(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{
+		Source:    "test",
+		SessionID: "s1",
+		StartedAt: now.UnixMilli(),
+	}
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventUserMessage,
+			Detail:    &collector.EventDetail{Content: "Fix the auth bug"},
+		},
+		{
+			Timestamp: now.Add(time.Second).UnixMilli(),
+			Event:     collector.EventAssistantMessage,
+			Detail:    &collector.EventDetail{Content: "Looking at auth handler"},
+		},
+	}
+
+	dm := NewDetailModel(session, events, 80, 40)
+	dm.ToggleVerbose()
+
+	view := dm.View()
+	assert.Contains(t, view, "Fix the auth bug")
+	assert.Contains(t, view, "Looking at auth handler")
+	assert.Contains(t, view, "[v]erbose: on")
+}
+
+func TestDetailModel_CompactView_ShowsIcons(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{
+		Source:    "test",
+		SessionID: "s1",
+		StartedAt: now.UnixMilli(),
+	}
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventUserMessage,
+			Detail:    &collector.EventDetail{Content: "Hello"},
+		},
+		{
+			Timestamp: now.Add(time.Second).UnixMilli(),
+			Event:     collector.EventToolStart,
+			Detail:    &collector.EventDetail{Tool: "Read", Target: "main.go"},
+		},
+	}
+
+	dm := NewDetailModel(session, events, 80, 40)
+	view := dm.View()
+	assert.Contains(t, view, "👤")
+	assert.Contains(t, view, "🔧")
+	assert.Contains(t, view, "[v]erbose: off")
+}
+
+func TestDetailModel_VerboseAppendEvent_RebuildsLines(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventUserMessage,
+			Detail:    &collector.EventDetail{Content: "Hello"},
+		},
+	}
+
+	dm := NewDetailModel(session, events, 80, 40)
+	dm.ToggleVerbose()
+	linesBefore := len(dm.renderedLines)
+
+	dm.AppendEvent(collector.MonitorEvent{
+		Timestamp: now.Add(time.Second).UnixMilli(),
+		Event:     collector.EventAssistantMessage,
+		Detail:    &collector.EventDetail{Content: "Response"},
+		Status:    collector.StatusThinking,
+	})
+	assert.Greater(t, len(dm.renderedLines), linesBefore, "renderedLines should grow after append")
+}
+
+func TestDetailModel_VerboseScrolling(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	// Create many events to force scrolling
+	var events []collector.MonitorEvent
+	for i := 0; i < 20; i++ {
+		events = append(events, collector.MonitorEvent{
+			Timestamp: now.Add(time.Duration(i) * time.Second).UnixMilli(),
+			Event:     collector.EventAssistantMessage,
+			Detail:    &collector.EventDetail{Content: "This is a message with some content that spans a line"},
+		})
+	}
+
+	dm := NewDetailModel(session, events, 80, 24) // small height to force scroll
+	dm.ToggleVerbose()
+
+	// Should be at bottom (follow mode)
+	assert.True(t, dm.follow)
+
+	// Scroll up
+	dm.ScrollUp()
+	assert.False(t, dm.follow)
+
+	// Scroll to top
+	dm.ScrollToTop()
+	assert.Equal(t, 0, dm.scroll)
+
+	// Scroll to bottom
+	dm.ScrollToBottom()
+	assert.True(t, dm.follow)
+	assert.Equal(t, dm.maxScroll(), dm.scroll)
+}
+
 // --- Ensure MatchesSession works ---
 
 func TestDetailModel_MatchesSession(t *testing.T) {
