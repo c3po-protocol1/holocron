@@ -587,6 +587,102 @@ func TestDetailModel_VerboseScrolling(t *testing.T) {
 	assert.Equal(t, dm.maxScroll(), dm.scroll)
 }
 
+// --- T7: Edge cases ---
+
+func TestDetailModel_VerboseWithStatusChangeEvents(t *testing.T) {
+	// Events without rich content (OpenClaw status changes) should render correctly
+	now := time.Now()
+	session := collector.SessionState{Source: "openclaw", SessionID: "s1", StartedAt: now.UnixMilli()}
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventStatusChange,
+			Status:    collector.StatusThinking,
+		},
+		{
+			Timestamp: now.Add(time.Second).UnixMilli(),
+			Event:     collector.EventStatusChange,
+			Status:    collector.StatusToolRunning,
+		},
+	}
+
+	dm := NewDetailModel(session, events, 80, 40)
+
+	// Compact mode
+	view := dm.View()
+	assert.Contains(t, view, "◌")
+	assert.Contains(t, view, "thinking")
+
+	// Verbose mode
+	dm.ToggleVerbose()
+	view = dm.View()
+	assert.Contains(t, view, "STATUS")
+	// Should not panic
+}
+
+func TestDetailModel_VerboseFollowMode(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "test", SessionID: "s1", StartedAt: now.UnixMilli()}
+	events := make([]collector.MonitorEvent, 20)
+	for i := range events {
+		events[i] = collector.MonitorEvent{
+			Timestamp: now.Add(time.Duration(i) * time.Second).UnixMilli(),
+			Event:     collector.EventAssistantMessage,
+			Detail:    &collector.EventDetail{Content: "Message number " + strings.Repeat("x", 40)},
+		}
+	}
+
+	dm := NewDetailModel(session, events, 80, 24)
+	dm.ToggleVerbose()
+	assert.True(t, dm.follow)
+
+	// Append new event — should stay at bottom
+	dm.AppendEvent(collector.MonitorEvent{
+		Timestamp: now.Add(30 * time.Second).UnixMilli(),
+		Event:     collector.EventUserMessage,
+		Detail:    &collector.EventDetail{Content: "New user message"},
+		Status:    collector.StatusThinking,
+	})
+	assert.True(t, dm.follow)
+	assert.Equal(t, dm.maxScroll(), dm.scroll)
+
+	// View should contain new event
+	view := dm.View()
+	assert.Contains(t, view, "New user message")
+}
+
+func TestDetailModel_VerboseEmptyEventLog(t *testing.T) {
+	session := collector.SessionState{Source: "test", SessionID: "s1"}
+	dm := NewDetailModel(session, nil, 80, 24)
+	dm.ToggleVerbose()
+
+	view := dm.View()
+	assert.Contains(t, view, "No events recorded")
+}
+
+func TestDetailModel_VerboseLongContentWraps(t *testing.T) {
+	now := time.Now()
+	session := collector.SessionState{Source: "test", SessionID: "s1", StartedAt: now.UnixMilli()}
+	longContent := strings.Repeat("word ", 50) // 250 chars
+	events := []collector.MonitorEvent{
+		{
+			Timestamp: now.UnixMilli(),
+			Event:     collector.EventUserMessage,
+			Detail:    &collector.EventDetail{Content: longContent},
+		},
+	}
+
+	dm := NewDetailModel(session, events, 60, 40)
+	dm.ToggleVerbose()
+
+	// renderedLines should have multiple lines for the wrapped content
+	assert.Greater(t, len(dm.renderedLines), 2, "long content should produce multiple rendered lines")
+
+	// View should render without panic
+	view := dm.View()
+	assert.Contains(t, view, "word")
+}
+
 // --- Ensure MatchesSession works ---
 
 func TestDetailModel_MatchesSession(t *testing.T) {
