@@ -43,6 +43,7 @@ func detailBindings(keys KeyMap) []helpBinding {
 		{"g", "Jump to top"},
 		{"G", "Jump to bottom"},
 		{"f", "Toggle follow mode"},
+		{"v", "Toggle verbose mode"},
 		{"q / Ctrl+C", "Quit"},
 		{"?", "Toggle help"},
 	}
